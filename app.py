@@ -173,24 +173,40 @@ OUTPUT FORMAT (JSON array only, no other text):
     
     return json.loads(content.strip())
 
-def generate_video_clip(prompt, duration, output_path, api_key):
-    """Generate a single video clip using LTX API."""
+def generate_video_clip(prompt, duration, output_path, api_key, image_uri=None):
+    """Generate a single video clip using LTX API.
+    
+    If image_uri is provided, uses image-to-video endpoint.
+    Otherwise uses text-to-video.
+    """
     if duration not in VALID_DURATIONS:
         duration = min(VALID_DURATIONS, key=lambda x: abs(x - duration))
     
-    url = f"{LTX_API_BASE}/text-to-video"
+    # Use image-to-video if we have a reference image
+    if image_uri:
+        url = f"{LTX_API_BASE}/image-to-video"
+        data = {
+            "image_uri": image_uri,
+            "prompt": prompt,
+            "model": LTX_MODEL,
+            "duration": duration,
+            "resolution": LTX_RESOLUTION,
+            "fps": LTX_FPS
+        }
+    else:
+        url = f"{LTX_API_BASE}/text-to-video"
+        data = {
+            "prompt": prompt,
+            "model": LTX_MODEL,
+            "duration": duration,
+            "resolution": LTX_RESOLUTION,
+            "fps": LTX_FPS,
+            "generate_audio": False
+        }
+    
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
-    }
-    
-    data = {
-        "prompt": prompt,
-        "model": LTX_MODEL,
-        "duration": duration,
-        "resolution": LTX_RESOLUTION,
-        "fps": LTX_FPS,
-        "generate_audio": False
     }
     
     req = urllib.request.Request(url, method="POST")
@@ -205,6 +221,13 @@ def generate_video_clip(prompt, duration, output_path, api_key):
                 if not chunk:
                     break
                 f.write(chunk)
+
+
+def image_to_data_uri(image_bytes, content_type="image/jpeg"):
+    """Convert image bytes to data URI for LTX API."""
+    import base64
+    b64 = base64.b64encode(image_bytes).decode('utf-8')
+    return f"data:{content_type};base64,{b64}"
 
 def concatenate_videos(video_paths, output_path):
     """Concatenate videos using ffmpeg."""
@@ -299,6 +322,8 @@ def main():
         3. 🎥 Creates video clips with AI
         4. 🔗 Stitches everything together
         
+        **NEW:** Add a reference image to style all clips!
+        
         Processing time: ~1 min per 10s of video
         """)
     
@@ -308,6 +333,22 @@ def main():
         type=["mp3", "wav", "m4a", "ogg", "flac"],
         help="Supported formats: MP3, WAV, M4A, OGG, FLAC"
     )
+    
+    # Optional reference image
+    st.markdown("---")
+    uploaded_image = st.file_uploader(
+        "📷 Reference Image (Optional)",
+        type=["jpg", "jpeg", "png", "webp"],
+        help="Upload an image to use as visual reference for all generated clips. The AI will animate and style videos based on this image."
+    )
+    
+    image_uri = None
+    if uploaded_image:
+        st.image(uploaded_image, caption="Reference image - videos will be styled based on this", width=300)
+        # Convert to data URI for LTX API
+        content_type = f"image/{uploaded_image.type.split('/')[-1]}" if '/' in uploaded_image.type else "image/jpeg"
+        image_uri = image_to_data_uri(uploaded_image.getvalue(), content_type)
+        st.success("✅ Reference image loaded - all video clips will use this as a visual guide")
     
     if uploaded_file:
         st.audio(uploaded_file)
@@ -378,7 +419,8 @@ def main():
                             prompt_data["prompt"],
                             prompt_data["duration"],
                             clip_path,
-                            keys['ltx']
+                            keys['ltx'],
+                            image_uri=image_uri  # Pass reference image if provided
                         )
                         clip_paths.append(clip_path)
                     
