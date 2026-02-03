@@ -1,6 +1,6 @@
 """
 Spreaker Analytics Dashboard
-Shows podcast analytics by Spreaker categories.
+Shows podcast analytics and revenue stats.
 """
 
 import streamlit as st
@@ -8,14 +8,16 @@ import pandas as pd
 import urllib.request
 import json
 from collections import defaultdict
+from datetime import datetime
 import time
+import os
 
 # ============================================================================
 # Configuration
 # ============================================================================
 
 st.set_page_config(
-    page_title="Spreaker Analytics Dashboard",
+    page_title="Spreaker Dashboard",
     page_icon="📊",
     layout="wide"
 )
@@ -26,9 +28,21 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/1sNGZ03EeEtqqR4qgNmCpXgc4Xeb
 # Spreaker API
 SPREAKER_API_KEY = "c5e07e8373932ea7d0276c77f73837c768b83c98"
 
+# Stats data file
+STATS_FILE = os.path.join(os.path.dirname(__file__), "data", "spreaker_stats.json")
+
 # ============================================================================
 # Data Loading Functions
 # ============================================================================
+
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def load_stats():
+    """Load scraped stats from JSON file."""
+    try:
+        with open(STATS_FILE, 'r') as f:
+            return json.load(f)
+    except:
+        return None
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def load_sheet_data():
@@ -64,21 +78,123 @@ def fetch_spreaker_category(show_id):
     except Exception as e:
         return {"category_name": "Unknown", "category_id": None, "category_2": None, "category_3": None}
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def enrich_with_categories(show_ids):
-    """Fetch Spreaker categories for a list of show IDs."""
-    categories = {}
-    for show_id in show_ids:
-        categories[show_id] = fetch_spreaker_category(show_id)
-    return categories
-
 # ============================================================================
-# Dashboard
+# Revenue & Stats Tab
 # ============================================================================
 
-def main():
-    st.title("📊 Spreaker Analytics Dashboard")
-    st.markdown("Podcast performance by **actual Spreaker categories**")
+def show_stats_tab():
+    """Display revenue and stats overview."""
+    st.header("💰 Revenue & Performance")
+    
+    stats = load_stats()
+    
+    if not stats:
+        st.error("Stats data not found. Run the scraper to update.")
+        return
+    
+    # Last updated
+    updated = stats.get('last_updated', 'Unknown')
+    st.caption(f"Last updated: {updated}")
+    
+    # Top metrics row
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        downloads = stats['downloads']['last_30_days']
+        change = stats['downloads']['change_pct']
+        st.metric(
+            "📥 Downloads (30d)", 
+            f"{downloads:,}", 
+            f"{change:+d}%" if change else None
+        )
+    
+    with col2:
+        impressions = stats['ad_exchange']['impressions']
+        change = stats['ad_exchange']['impressions_change_pct']
+        st.metric(
+            "👁️ Ad Impressions (30d)", 
+            f"{impressions:,}", 
+            f"{change:+d}%"
+        )
+    
+    with col3:
+        revenue = stats['ad_exchange']['revenue_usd']
+        change = stats['ad_exchange']['revenue_change_pct']
+        st.metric(
+            "💵 Ad Revenue (30d)", 
+            f"${revenue:,.2f}", 
+            f"{change:+d}%"
+        )
+    
+    with col4:
+        total_shows = stats['organization']['total_shows']
+        total_eps = stats['organization']['total_episodes']
+        st.metric("🎙️ Shows / Episodes", f"{total_shows:,} / {total_eps:,}")
+    
+    st.divider()
+    
+    # Revenue breakdown
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📊 Revenue by Account (30d)")
+        accounts = stats.get('accounts', [])
+        if accounts:
+            df_accounts = pd.DataFrame(accounts)
+            df_accounts = df_accounts.sort_values('revenue', ascending=False)
+            
+            # Bar chart
+            chart_data = df_accounts.set_index('name')['revenue'].head(10)
+            st.bar_chart(chart_data)
+            
+            # Table
+            st.dataframe(
+                df_accounts.style.format({
+                    'impressions': '{:,.0f}',
+                    'revenue': '${:,.2f}'
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+    
+    with col2:
+        st.subheader("📈 Payment History")
+        payments = stats.get('payment_history', [])
+        if payments:
+            df_payments = pd.DataFrame(payments)
+            
+            # Calculate yearly totals
+            df_payments['year'] = df_payments['month'].apply(lambda x: x.split('-')[0] if '-' in str(x) else '2023')
+            yearly = df_payments.groupby('year')['amount'].sum().sort_index(ascending=False)
+            
+            # Show yearly summary
+            for year, total in yearly.items():
+                st.metric(f"💰 {year} Total", f"${total:,.2f}")
+            
+            # Chart
+            df_chart = df_payments.copy()
+            df_chart = df_chart[~df_chart['month'].str.contains('/')].head(12)  # Skip combined months
+            df_chart['month_short'] = df_chart['month'].apply(lambda x: x[5:7] + '/' + x[2:4] if len(x) >= 7 else x)
+            
+            chart_data = df_chart.set_index('month_short')['amount'].iloc[::-1]  # Reverse for chronological
+            st.line_chart(chart_data)
+            
+            # Table
+            st.dataframe(
+                df_payments[['month', 'amount', 'status', 'paid_date']].head(12).style.format({
+                    'amount': '${:,.2f}'
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+# ============================================================================
+# Analytics Tab
+# ============================================================================
+
+def show_analytics_tab():
+    """Display podcast analytics by category."""
+    st.header("📊 Podcast Analytics")
     
     # Load data
     with st.spinner("Loading sheet data..."):
@@ -107,12 +223,12 @@ def main():
         # Category enrichment
         st.header("📂 Category Data")
         
-        if st.button("🔄 Fetch Spreaker Categories", help="This fetches real categories from Spreaker API"):
-            with st.spinner("Fetching categories (this may take a few minutes)..."):
+        if st.button("🔄 Fetch Spreaker Categories"):
+            with st.spinner("Fetching categories..."):
                 progress = st.progress(0)
                 status = st.empty()
                 
-                show_ids = df['Podcast ID'].tolist()
+                show_ids = df['Podcast ID'].tolist()[:500]  # Limit for speed
                 categories = {}
                 
                 for i, show_id in enumerate(show_ids):
@@ -120,12 +236,10 @@ def main():
                         progress.progress(i / len(show_ids))
                         status.text(f"Fetching {i}/{len(show_ids)}...")
                     categories[show_id] = fetch_spreaker_category(show_id)
-                    time.sleep(0.05)  # Rate limiting
+                    time.sleep(0.02)
                 
                 progress.progress(1.0)
                 status.text("Done!")
-                
-                # Store in session state
                 st.session_state['categories'] = categories
                 st.rerun()
     
@@ -140,42 +254,14 @@ def main():
     
     st.info(f"Showing **{len(filtered_df):,}** podcasts after filters")
     
-    # Check if we have category data
+    # Show category analysis or preview
     if 'categories' in st.session_state:
         categories = st.session_state['categories']
-        
-        # Add category columns to dataframe
         filtered_df['Spreaker Category'] = filtered_df['Podcast ID'].map(
             lambda x: categories.get(x, {}).get('category_name', 'Unknown')
         )
-        filtered_df['Subcategory 1'] = filtered_df['Podcast ID'].map(
-            lambda x: categories.get(x, {}).get('category_2', '')
-        )
-        filtered_df['Subcategory 2'] = filtered_df['Podcast ID'].map(
-            lambda x: categories.get(x, {}).get('category_3', '')
-        )
-        
-        # Main metrics row
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Total Shows", f"{len(filtered_df):,}")
-        with col2:
-            total_downloads = filtered_df['Lifetime Downloads'].sum()
-            st.metric("Total Lifetime Downloads", f"{total_downloads:,.0f}")
-        with col3:
-            recent_downloads = filtered_df['Recent 30-Day Downloads'].sum()
-            st.metric("30-Day Downloads", f"{recent_downloads:,.0f}")
-        with col4:
-            num_categories = filtered_df['Spreaker Category'].nunique()
-            st.metric("Categories", num_categories)
-        
-        st.divider()
         
         # Category breakdown
-        st.header("📊 Performance by Spreaker Category")
-        
-        # Aggregate by category
         cat_stats = filtered_df.groupby('Spreaker Category').agg({
             'Podcast ID': 'count',
             'Lifetime Downloads': 'sum',
@@ -189,31 +275,14 @@ def main():
         cat_stats['Avg DLs/Show'] = (cat_stats['30-Day DLs'] / cat_stats['Shows']).round(0)
         cat_stats = cat_stats.sort_values('30-Day DLs', ascending=False)
         
-        # Display options
-        view_mode = st.radio(
-            "Sort by:",
-            ["30-Day Downloads", "Show Count", "Avg Downloads/Show"],
-            horizontal=True
-        )
-        
-        sort_col = {
-            "30-Day Downloads": "30-Day DLs",
-            "Show Count": "Shows",
-            "Avg Downloads/Show": "Avg DLs/Show"
-        }[view_mode]
-        
-        cat_stats = cat_stats.sort_values(sort_col, ascending=False)
-        
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            # Bar chart
-            st.bar_chart(cat_stats[sort_col].head(20))
+            st.bar_chart(cat_stats['30-Day DLs'].head(15))
         
         with col2:
-            # Top categories table
             st.dataframe(
-                cat_stats.head(20).style.format({
+                cat_stats.head(15).style.format({
                     'Shows': '{:,.0f}',
                     'Lifetime DLs': '{:,.0f}',
                     '30-Day DLs': '{:,.0f}',
@@ -221,82 +290,39 @@ def main():
                 }),
                 use_container_width=True
             )
-        
-        st.divider()
-        
-        # Category deep dive
-        st.header("🔍 Category Deep Dive")
-        
-        selected_category = st.selectbox(
-            "Select a category to explore:",
-            options=['All'] + sorted(filtered_df['Spreaker Category'].unique().tolist())
-        )
-        
-        if selected_category != 'All':
-            cat_df = filtered_df[filtered_df['Spreaker Category'] == selected_category]
-        else:
-            cat_df = filtered_df
-        
-        # Show top podcasts in category
-        st.subheader(f"Top Podcasts in {selected_category}")
-        
-        display_df = cat_df.nlargest(20, 'Recent 30-Day Downloads')[[
-            'Podcast Title', 'Spreaker Category', 'Recent 30-Day Downloads', 
-            'Lifetime Downloads', 'Activity Percentile'
-        ]]
-        
-        st.dataframe(
-            display_df.style.format({
-                'Recent 30-Day Downloads': '{:,.0f}',
-                'Lifetime Downloads': '{:,.0f}',
-                'Activity Percentile': '{:.1%}'
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        # Download full data
-        st.divider()
-        
-        csv = filtered_df.to_csv(index=False)
-        st.download_button(
-            "📥 Download Full Data (CSV)",
-            csv,
-            "spreaker_analytics.csv",
-            "text/csv",
-            use_container_width=True
-        )
-    
     else:
-        # No category data yet
-        st.warning("👆 Click **'Fetch Spreaker Categories'** in the sidebar to load real category data from Spreaker API")
-        
-        # Show preview with existing bundle data
-        st.header("📋 Current Data (using 'Primary Bundle')")
+        st.warning("👆 Click **'Fetch Spreaker Categories'** in the sidebar to load category data")
         
         if 'Primary Bundle' in df.columns:
             bundle_stats = filtered_df.groupby('Primary Bundle').agg({
                 'Podcast ID': 'count',
-                'Lifetime Downloads': 'sum',
                 'Recent 30-Day Downloads': 'sum'
             }).rename(columns={
                 'Podcast ID': 'Shows',
-                'Lifetime Downloads': 'Lifetime DLs',
                 'Recent 30-Day Downloads': '30-Day DLs'
             }).sort_values('30-Day DLs', ascending=False)
             
-            st.dataframe(
-                bundle_stats.style.format({
-                    'Shows': '{:,.0f}',
-                    'Lifetime DLs': '{:,.0f}',
-                    '30-Day DLs': '{:,.0f}'
-                }),
-                use_container_width=True
-            )
-        
-        # Preview table
-        st.subheader("📄 Data Preview")
-        st.dataframe(filtered_df.head(100), use_container_width=True)
+            st.dataframe(bundle_stats, use_container_width=True)
+    
+    # Download button
+    csv = filtered_df.to_csv(index=False)
+    st.download_button("📥 Download Data", csv, "spreaker_analytics.csv", "text/csv")
+
+# ============================================================================
+# Main App
+# ============================================================================
+
+def main():
+    st.title("📊 QP-1 Spreaker Dashboard")
+    
+    # Tabs
+    tab1, tab2 = st.tabs(["💰 Revenue & Stats", "📈 Podcast Analytics"])
+    
+    with tab1:
+        show_stats_tab()
+    
+    with tab2:
+        show_analytics_tab()
 
 if __name__ == "__main__":
     main()

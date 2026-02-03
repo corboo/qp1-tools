@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inception Point AI - Podcast Asset Tracker</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+        
+        .container { max-width: 1800px; margin: 0 auto; }
+        
+        header { text-align: center; padding: 20px 0 30px; }
+        .logo { font-size: 2.5rem; margin-bottom: 8px; }
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle { color: #8892b0; font-size: 1rem; }
+        .last-updated { color: #64ffda; font-size: 0.85rem; margin-top: 8px; }
+        
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+        
+        .stat-box {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .stat-box .number {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #64ffda;
+        }
+        
+        .stat-box .label {
+            color: #8892b0;
+            font-size: 0.75rem;
+            margin-top: 4px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .filter-group label {
+            color: #8892b0;
+            font-size: 0.85rem;
+        }
+        
+        select, input[type="text"] {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+        
+        select:focus, input:focus {
+            outline: none;
+            border-color: #64ffda;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 20px;
+            overflow-x: auto;
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 15px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .card-title-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .card-icon { font-size: 1.3rem; }
+        .card-title { font-size: 1rem; font-weight: 600; color: #fff; }
+        
+        .export-btn {
+            background: rgba(100, 255, 218, 0.2);
+            border: 1px solid #64ffda;
+            color: #64ffda;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+        
+        .export-btn:hover { background: rgba(100, 255, 218, 0.3); }
+        
+        table { width: 100%; border-collapse: collapse; min-width: 1200px; }
+        
+        th {
+            text-align: left;
+            color: #8892b0;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 10px 8px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+            background: #1a1a2e;
+        }
+        
+        th:hover { color: #64ffda; }
+        
+        th.sorted-asc::after { content: ' ↑'; color: #64ffda; }
+        th.sorted-desc::after { content: ' ↓'; color: #64ffda; }
+        
+        td {
+            padding: 10px 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 0.85rem;
+        }
+        
+        tr:hover { background: rgba(255, 255, 255, 0.03); }
+        
+        .title-cell {
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .number-cell {
+            text-align: right;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+        
+        .number-cell.highlight { color: #64ffda; font-weight: 600; }
+        
+        .category-tag {
+            display: inline-block;
+            padding: 3px 8px;
+            background: rgba(102, 126, 234, 0.2);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: #a8b2d1;
+        }
+        
+        .network-tag {
+            display: inline-block;
+            padding: 3px 8px;
+            background: rgba(100, 255, 218, 0.15);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: #64ffda;
+        }
+        
+        .pct-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .pct-bar-fill {
+            width: 60px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .pct-bar-inner {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 3px;
+        }
+        
+        .pct-bar-inner.us { background: linear-gradient(90deg, #3b82f6, #1d4ed8); }
+        .pct-bar-inner.apple { background: linear-gradient(90deg, #64ffda, #06b6d4); }
+        
+        .date-cell {
+            color: #8892b0;
+            font-size: 0.8rem;
+        }
+        
+        .manual-input {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            color: #8892b0;
+            padding: 4px 8px;
+            border-radius: 4px;
+            width: 70px;
+            font-size: 0.8rem;
+            text-align: right;
+        }
+        
+        .manual-input:focus {
+            border-color: #64ffda;
+            color: #fff;
+        }
+        
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+        
+        .category-section {
+            margin-bottom: 30px;
+        }
+        
+        .category-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .category-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        
+        .category-count {
+            color: #8892b0;
+            font-size: 0.85rem;
+        }
+        
+        .recommendation {
+            background: rgba(102, 126, 234, 0.1);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+        
+        .rec-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        
+        .rec-type {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: rgba(100, 255, 218, 0.2);
+            color: #64ffda;
+        }
+        
+        .rec-title { font-weight: 600; font-size: 0.9rem; }
+        .rec-desc { font-size: 0.8rem; color: #8892b0; line-height: 1.4; }
+        
+        .show-titles { list-style: none; }
+        
+        .show-titles li {
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 6px;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+            border-left: 3px solid #667eea;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 30px 20px;
+            color: #8892b0;
+            font-size: 0.8rem;
+        }
+        
+        .refresh-note {
+            display: inline-block;
+            padding: 6px 14px;
+            background: rgba(100, 255, 218, 0.1);
+            border-radius: 15px;
+            color: #64ffda;
+            margin-top: 8px;
+            font-size: 0.75rem;
+        }
+        
+        @media (max-width: 768px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            h1 { font-size: 1.5rem; }
+            .stats-bar { grid-template-columns: repeat(3, 1fr); }
+            .controls { flex-direction: column; align-items: stretch; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">🚀</div>
+            <h1>Inception Point AI</h1>
+            <p class="subtitle">Podcast Asset Tracker</p>
+            <p class="last-updated">Last Updated: February 3, 2026 at 8:25 AM PST</p>
+        </header>
+        
+        <!-- Key Metrics Bar -->
+        <div class="stats-bar">
+            <div class="stat-box">
+                <div class="number">5,265</div>
+                <div class="label">Total Shows</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">246,708</div>
+                <div class="label">Total Episodes</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">20+</div>
+                <div class="label">Networks</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">~340</div>
+                <div class="label">Eps/Day Avg</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">50,792</div>
+                <div class="label">Top Downloads</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">97%</div>
+                <div class="label">Best Apple%</div>
+            </div>
+            <div class="stat-box" style="background: rgba(100, 255, 218, 0.1); border-color: #64ffda;">
+                <div class="number" id="totalRevenue">$4,111.54</div>
+                <div class="label">Est. Revenue (MTD)</div>
+            </div>
+            <div class="stat-box">
+                <div class="number" id="revenuePerK">$5.76</div>
+                <div class="label">Rev/1K Downloads</div>
+            </div>
+        </div>
+        
+        <!-- Main Data Table -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title-group">
+                    <span class="card-icon">📊</span>
+                    <span class="card-title">Content Performance Dashboard</span>
+                </div>
+                <button class="export-btn" onclick="exportToCSV()">📥 Export CSV</button>
+            </div>
+            
+            <div class="controls">
+                <div class="filter-group">
+                    <label>Category:</label>
+                    <select id="categoryFilter" onchange="filterTable()">
+                        <option value="">All Categories</option>
+                        <option value="Arts">Arts</option>
+                        <option value="Books">Books</option>
+                        <option value="Comedy">Comedy</option>
+                        <option value="Documentary">Documentary</option>
+                        <option value="Fiction">Fiction</option>
+                        <option value="History">History</option>
+                        <option value="Hobbies">Hobbies</option>
+                        <option value="How To">How To</option>
+                        <option value="Music">Music</option>
+                        <option value="News">News</option>
+                        <option value="Soccer">Soccer</option>
+                        <option value="Sports">Sports</option>
+                        <option value="Technology">Technology</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Network:</label>
+                    <select id="networkFilter" onchange="filterTable()">
+                        <option value="">All Networks</option>
+                        <option value="QP-1">QP-1 (519)</option>
+                        <option value="QP-3">QP-3 (498)</option>
+                        <option value="QP-5">QP-5 (215)</option>
+                        <option value="QP-Daily">QP-Daily (1,012)</option>
+                        <option value="QP-JT2">QP-JT2 (276)</option>
+                        <option value="Katie Brown 2">Katie Brown 2 (369)</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Search:</label>
+                    <input type="text" id="searchFilter" placeholder="Search titles..." onkeyup="filterTable()">
+                </div>
+            </div>
+            
+            <table id="dataTable">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable(0)">Category</th>
+                        <th onclick="sortTable(1)">Title</th>
+                        <th onclick="sortTable(2)" class="number-cell">EP #</th>
+                        <th onclick="sortTable(3)" class="number-cell">DL #</th>
+                        <th onclick="sortTable(4)" class="number-cell">US%</th>
+                        <th onclick="sortTable(5)" class="number-cell">Apple%</th>
+                        <th class="number-cell">$ (Manual)</th>
+                        <th onclick="sortTable(7)">Updated</th>
+                        <th class="number-cell">AppleSUB</th>
+                        <th>Network</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr data-category="Music" data-network="QP-1">
+                        <td><span class="category-tag">Music</span></td>
+                        <td class="title-cell">Calm Podcast</td>
+                        <td class="number-cell">24</td>
+                        <td class="number-cell highlight">50,792</td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner us" style="width: 70%"></div></div>
+                                70%
+                            </div>
+                        </td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner apple" style="width: 45%"></div></div>
+                                45%
+                            </div>
+                        </td>
+                        <td><input type="text" class="manual-input" placeholder="$0.00"></td>
+                        <td class="date-cell">Jan 30</td>
+                        <td><input type="text" class="manual-input" placeholder="0"></td>
+                        <td><span class="network-tag">QP-1</span></td>
+                    </tr>
+                    <tr data-category="Music" data-network="QP-1">
+                        <td><span class="category-tag">Music</span></td>
+                        <td class="title-cell">Bad Bunny</td>
+                        <td class="number-cell">262</td>
+                        <td class="number-cell highlight">49,668</td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner us" style="width: 31%"></div></div>
+                                31%
+                            </div>
+                        </td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner apple" style="width: 19%"></div></div>
+                                19%
+                            </div>
+                        </td>
+                        <td><input type="text" class="manual-input" placeholder="$0.00"></td>
+                        <td class="date-cell">Jan 29</td>
+                        <td><input type="text" class="manual-input" placeholder="0"></td>
+                        <td><span class="network-tag">QP-1</span></td>
+                    </tr>
+                    <tr data-category="Documentary" data-network="QP-1">
+                        <td><span class="category-tag">Documentary</span></td>
+                        <td class="title-cell">BIGFOOT! - Biography Flash</td>
+                        <td class="number-cell">120</td>
+                        <td class="number-cell highlight">31,097</td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner us" style="width: 93%"></div></div>
+                                93%
+                            </div>
+                        </td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner apple" style="width: 0%"></div></div>
+                                0%
+                            </div>
+                        </td>
+                        <td><input type="text" class="manual-input" placeholder="$0.00"></td>
+                        <td class="date-cell">Jan 28</td>
+                        <td><input type="text" class="manual-input" placeholder="0"></td>
+                        <td><span class="network-tag">QP-1</span></td>
+                    </tr>
+                    <tr data-category="Arts" data-network="QP-1">
+                        <td><span class="category-tag">Arts</span></td>
+                        <td class="title-cell">CBS Radio Mystery Theater - OTR</td>
+                        <td class="number-cell">6</td>
+                        <td class="number-cell highlight">25,369</td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner us" style="width: 88%"></div></div>
+                                88%
+                            </div>
+                        </td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner apple" style="width: 21%"></div></div>
+                                21%
+                            </div>
+                        </td>
+                        <td><input type="text" class="manual-input" placeholder="$0.00"></td>
+                        <td class="date-cell">Nov 2023</td>
+                        <td><input type="text" class="manual-input" placeholder="0"></td>
+                        <td><span class="network-tag">QP-1</span></td>
+                    </tr>
+                    <tr data-category="News" data-network="QP-1">
+                        <td><span class="category-tag">News</span></td>
+                        <td class="title-cell">AK-47 Who Makes it</td>
+                        <td class="number-cell">1</td>
+                        <td class="number-cell highlight">24,265</td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner us" style="width: 0%"></div></div>
+                                0%
+                            </div>
+                        </td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner apple" style="width: 1%"></div></div>
+                                1%
+                            </div>
+                        </td>
+                        <td><input type="text" class="manual-input" placeholder="$0.00"></td>
+                        <td class="date-cell">Sep 2023</td>
+                        <td><input type="text" class="manual-input" placeholder="0"></td>
+                        <td><span class="network-tag">QP-1</span></td>
+                    </tr>
+                    <tr data-category="Soccer" data-network="QP-1">
+                        <td><span class="category-tag">Soccer</span></td>
+                        <td class="title-cell">Cristiano Ronaldo - Biography Flash</td>
+                        <td class="number-cell">49</td>
+                        <td class="number-cell highlight">21,723</td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner us" style="width: 8%"></div></div>
+                                8%
+                            </div>
+                        </td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner apple" style="width: 35%"></div></div>
+                                35%
+                            </div>
+                        </td>
+                        <td><input type="text" class="manual-input" placeholder="$0.00"></td>
+                        <td class="date-cell">Jan 24</td>
+                        <td><input type="text" class="manual-input" placeholder="0"></td>
+                        <td><span class="network-tag">QP-1</span></td>
+                    </tr>
+                    <tr data-category="Hobbies" data-network="QP-1">
+                        <td><span class="category-tag">Hobbies</span></td>
+                        <td class="title-cell">Bird Songs for Cats</td>
+                        <td class="number-cell">13</td>
+                        <td class="number-cell highlight">17,364</td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner us" style="width: 63%"></div></div>
+                                63%
+                            </div>
+                        </td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner apple" style="width: 7%"></div></div>
+                                7%
+                            </div>
+                        </td>
+                        <td><input type="text" class="manual-input" placeholder="$0.00"></td>
+                        <td class="date-cell">May 2024</td>
+                        <td><input type="text" class="manual-input" placeholder="0"></td>
+                        <td><span class="network-tag">QP-1</span></td>
+                    </tr>
+                    <tr data-category="Music" data-network="QP-1">
+                        <td><span class="category-tag">Music</span></td>
+                        <td class="title-cell">Chill</td>
+                        <td class="number-cell">9</td>
+                        <td class="number-cell highlight">15,678</td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner us" style="width: 7%"></div></div>
+                                7%
+                            </div>
+                        </td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner apple" style="width: 16%"></div></div>
+                                16%
+                            </div>
+                        </td>
+                        <td><input type="text" class="manual-input" placeholder="$0.00"></td>
+                        <td class="date-cell">Jan 2024</td>
+                        <td><input type="text" class="manual-input" placeholder="0"></td>
+                        <td><span class="network-tag">QP-1</span></td>
+                    </tr>
+                    <tr data-category="History" data-network="QP-1">
+                        <td><span class="category-tag">History</span></td>
+                        <td class="title-cell">Britney Spears - Audio Biography</td>
+                        <td class="number-cell">17</td>
+                        <td class="number-cell highlight">14,647</td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner us" style="width: 51%"></div></div>
+                                51%
+                            </div>
+                        </td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner apple" style="width: 61%"></div></div>
+                                61%
+                            </div>
+                        </td>
+                        <td><input type="text" class="manual-input" placeholder="$0.00"></td>
+                        <td class="date-cell">Jan 2024</td>
+                        <td><input type="text" class="manual-input" placeholder="0"></td>
+                        <td><span class="network-tag">QP-1</span></td>
+                    </tr>
+                    <tr data-category="Fiction" data-network="QP-1">
+                        <td><span class="category-tag">Fiction</span></td>
+                        <td class="title-cell">12 Spooky Ghost Stories for Halloween</td>
+                        <td class="number-cell">6</td>
+                        <td class="number-cell highlight">13,801</td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner us" style="width: 87%"></div></div>
+                                87%
+                            </div>
+                        </td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner apple" style="width: 97%"></div></div>
+                                97%
+                            </div>
+                        </td>
+                        <td><input type="text" class="manual-input" placeholder="$0.00"></td>
+                        <td class="date-cell">Sep 2023</td>
+                        <td><input type="text" class="manual-input" placeholder="0"></td>
+                        <td><span class="network-tag">QP-1</span></td>
+                    </tr>
+                    <tr data-category="News" data-network="QP-Daily">
+                        <td><span class="category-tag">News</span></td>
+                        <td class="title-cell">Donald Trump Trials</td>
+                        <td class="number-cell">148</td>
+                        <td class="number-cell highlight">11,698</td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner us" style="width: 78%"></div></div>
+                                78%
+                            </div>
+                        </td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner apple" style="width: 15%"></div></div>
+                                15%
+                            </div>
+                        </td>
+                        <td><input type="text" class="manual-input" placeholder="$0.00"></td>
+                        <td class="date-cell">Jan 29</td>
+                        <td><input type="text" class="manual-input" placeholder="0"></td>
+                        <td><span class="network-tag">QP-Daily</span></td>
+                    </tr>
+                    <tr data-category="History" data-network="QP-1">
+                        <td><span class="category-tag">History</span></td>
+                        <td class="title-cell">Dolly Parton - Audio Biography</td>
+                        <td class="number-cell">53</td>
+                        <td class="number-cell highlight">11,688</td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner us" style="width: 82%"></div></div>
+                                82%
+                            </div>
+                        </td>
+                        <td class="number-cell">
+                            <div class="pct-bar">
+                                <div class="pct-bar-fill"><div class="pct-bar-inner apple" style="width: 40%"></div></div>
+                                40%
+                            </div>
+                        </td>
+                        <td><input type="text" class="manual-input" placeholder="$0.00"></td>
+                        <td class="date-cell">Jan 27</td>
+                        <td><input type="text" class="manual-input" placeholder="0"></td>
+                        <td><span class="network-tag">QP-1</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Networks & Health Status Row -->
+        <div class="grid-2">
+            <!-- Networks Overview -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title-group">
+                        <span class="card-icon">🌐</span>
+                        <span class="card-title">Networks Status</span>
+                    </div>
+                </div>
+                <p style="color: #8892b0; font-size: 0.85rem; margin-bottom: 12px;">Your podcast empire spans 20+ networks:</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <span style="padding: 5px 10px; background: rgba(100, 255, 218, 0.2); border: 1px solid #64ffda; border-radius: 15px; font-size: 0.8rem; color: #64ffda;">✓ QP-1</span>
+                    <span style="padding: 5px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; font-size: 0.8rem; color: #8892b0;">QP-2</span>
+                    <span style="padding: 5px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; font-size: 0.8rem; color: #8892b0;">QP-3</span>
+                    <span style="padding: 5px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; font-size: 0.8rem; color: #8892b0;">QP-4</span>
+                    <span style="padding: 5px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; font-size: 0.8rem; color: #8892b0;">QP-5</span>
+                    <span style="padding: 5px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; font-size: 0.8rem; color: #8892b0;">QP-Daily</span>
+                    <span style="padding: 5px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; font-size: 0.8rem; color: #8892b0;">QP-Blended</span>
+                    <span style="padding: 5px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; font-size: 0.8rem; color: #8892b0;">Katie Brown</span>
+                    <span style="padding: 5px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; font-size: 0.8rem; color: #8892b0;">Katie Brown 2</span>
+                    <span style="padding: 5px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; font-size: 0.8rem; color: #8892b0;">David McHealy</span>
+                    <span style="padding: 5px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; font-size: 0.8rem; color: #8892b0;">QP-JNP</span>
+                    <span style="padding: 5px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; font-size: 0.8rem; color: #8892b0;">QP-JP</span>
+                    <span style="padding: 5px 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; font-size: 0.8rem; color: #8892b0;">QP-JT2</span>
+                </div>
+                <p style="color: #ff6b6b; font-size: 0.75rem; margin-top: 12px;">⚠️ Currently tracking QP-1 only. API keys needed for other networks.</p>
+            </div>
+            
+            <!-- Health Status -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title-group">
+                        <span class="card-icon">💚</span>
+                        <span class="card-title">System Health</span>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px;">
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+                        <span style="width: 10px; height: 10px; border-radius: 50%; background: #64ffda; box-shadow: 0 0 8px #64ffda;"></span>
+                        <span style="font-size: 0.85rem;">Spreaker API</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+                        <span style="width: 10px; height: 10px; border-radius: 50%; background: #64ffda; box-shadow: 0 0 8px #64ffda;"></span>
+                        <span style="font-size: 0.85rem;">Make.com Pipeline</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+                        <span style="width: 10px; height: 10px; border-radius: 50%; background: #64ffda; box-shadow: 0 0 8px #64ffda;"></span>
+                        <span style="font-size: 0.85rem;">Publishing Active</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+                        <span style="width: 10px; height: 10px; border-radius: 50%; background: #64ffda; box-shadow: 0 0 8px #64ffda;"></span>
+                        <span style="font-size: 0.85rem;">Spreaker Prime</span>
+                    </div>
+                </div>
+                <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px;">
+                    <div style="display: flex; justify-content: space-between; padding: 6px 0; font-size: 0.85rem;">
+                        <span style="color: #8892b0;">Last Episode</span>
+                        <span style="color: #64ffda;">Today 8:00 AM</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 6px 0; font-size: 0.85rem;">
+                        <span style="color: #8892b0;">Plan Valid Until</span>
+                        <span>Feb 16, 2026</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding: 6px 0; font-size: 0.85rem;">
+                        <span style="color: #8892b0;">Daily Avg</span>
+                        <span>~340 episodes</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Revenue Section -->
+        <div class="card" id="revenueCard">
+            <div class="card-header">
+                <div class="card-title-group">
+                    <span class="card-icon">💰</span>
+                    <span class="card-title">Top Earners</span>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <label class="export-btn" style="cursor: pointer;">
+                        📤 Import CSV
+                        <input type="file" id="csvUpload" accept=".csv" style="display: none;" onchange="handleCSVUpload(event)">
+                    </label>
+                    <button class="export-btn" onclick="exportRevenueCSV()">📥 Export</button>
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                <div style="background: rgba(100, 255, 218, 0.1); border: 1px solid rgba(100, 255, 218, 0.3); border-radius: 10px; padding: 15px;">
+                    <div style="font-size: 0.75rem; color: #8892b0; margin-bottom: 5px;">This Month</div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: #64ffda;" id="monthRevenue">$4,111.54</div>
+                    <div style="font-size: 0.7rem; color: #8892b0; margin-top: 3px;">from <span id="earningShowCount">0</span> shows</div>
+                </div>
+                <div style="background: rgba(102, 126, 234, 0.1); border: 1px solid rgba(102, 126, 234, 0.3); border-radius: 10px; padding: 15px;">
+                    <div style="font-size: 0.75rem; color: #8892b0; margin-bottom: 5px;">Top Earner</div>
+                    <div style="font-size: 1.1rem; font-weight: 600; color: #fff;" id="topEarnerName">Katie Brown</div>
+                    <div style="font-size: 1.3rem; font-weight: 700; color: #667eea;" id="topEarnerAmount">$869.57</div>
+                </div>
+                <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 15px;">
+                    <div style="font-size: 0.75rem; color: #8892b0; margin-bottom: 5px;">Avg per Show</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #fff;" id="avgRevenue">$228.42</div>
+                </div>
+                <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 15px;">
+                    <div style="font-size: 0.75rem; color: #8892b0; margin-bottom: 5px;">Efficiency ($/1K DL)</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #fff;" id="efficiencyRate">$0.00</div>
+                </div>
+            </div>
+            
+            <div style="max-height: 350px; overflow-y: auto;">
+                <table id="revenueTable" style="min-width: auto;">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">#</th>
+                            <th onclick="sortRevenueTable(1)">Show Title</th>
+                            <th onclick="sortRevenueTable(2)" class="number-cell" style="width: 100px;">Downloads</th>
+                            <th onclick="sortRevenueTable(3)" class="number-cell" style="width: 100px;">Revenue</th>
+                            <th onclick="sortRevenueTable(4)" class="number-cell" style="width: 80px;">$/1K</th>
+                            <th style="width: 80px;">Trend</th>
+                        </tr>
+                    </thead>
+                    <tbody id="revenueTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: #8892b0; padding: 40px;">
+                                <div style="font-size: 2rem; margin-bottom: 10px;">📊</div>
+                                <div>No revenue data yet</div>
+                                <div style="font-size: 0.8rem; margin-top: 8px;">Import a CSV from Spreaker or enter values manually in the main table</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span style="color: #8892b0; font-size: 0.8rem;">Quick Add:</span>
+                    <input type="text" id="quickAddTitle" placeholder="Show title" style="flex: 1; min-width: 150px;">
+                    <input type="number" id="quickAddRevenue" placeholder="Revenue $" style="width: 100px;">
+                    <input type="number" id="quickAddDownloads" placeholder="Downloads" style="width: 100px;">
+                    <button class="export-btn" onclick="quickAddRevenue()" style="background: rgba(100, 255, 218, 0.3);">+ Add</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid-2">
+            <!-- Topic Recommendations -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title-group">
+                        <span class="card-icon">🎯</span>
+                        <span class="card-title">Topic Recommendations</span>
+                    </div>
+                </div>
+                <div class="recommendation">
+                    <div class="rec-header">
+                        <span class="rec-type">🔥 Hot</span>
+                        <span class="rec-title">Super Bowl LX</span>
+                    </div>
+                    <div class="rec-desc">11 days out. Bad Bunny halftime content performing well.</div>
+                </div>
+                <div class="recommendation">
+                    <div class="rec-header">
+                        <span class="rec-type">📅 Now</span>
+                        <span class="rec-title">Black History Month</span>
+                    </div>
+                    <div class="rec-desc">Starts tomorrow! Biography content for historical figures.</div>
+                </div>
+                <div class="recommendation">
+                    <div class="rec-header">
+                        <span class="rec-type">📅 Soon</span>
+                        <span class="rec-title">Groundhog Day (Feb 2)</span>
+                    </div>
+                    <div class="rec-desc">3 days away. Easy evergreen content.</div>
+                </div>
+                <div class="recommendation">
+                    <div class="rec-header">
+                        <span class="rec-type">📈 Trend</span>
+                        <span class="rec-title">DeepSeek AI</span>
+                    </div>
+                    <div class="rec-desc">Tech/AI content trending. Side hustle angle working.</div>
+                </div>
+                <div class="recommendation">
+                    <div class="rec-header">
+                        <span class="rec-type">🏆 Awards</span>
+                        <span class="rec-title">Oscars 2026</span>
+                    </div>
+                    <div class="rec-desc">Awards season. Nominee bios, predictions.</div>
+                </div>
+            </div>
+            
+            <!-- New Show Title Suggestions -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title-group">
+                        <span class="card-icon">💡</span>
+                        <span class="card-title">New Show Ideas</span>
+                    </div>
+                </div>
+                <ul class="show-titles">
+                    <li><strong>Super Bowl Countdown</strong> — Daily game buildup</li>
+                    <li><strong>Black History Heroes</strong> — Feb launch timing</li>
+                    <li><strong>AI Money Moves</strong> — Capitalize on AI hustle trend</li>
+                    <li><strong>Healthcare Crisis Report</strong> — Labor/strike focus</li>
+                    <li><strong>Grammy Drama Daily</strong> — Music awards buzz</li>
+                    <li><strong>True Crime Cold Cases</strong> — DNA breakthroughs</li>
+                    <li><strong>K-Pop Universe</strong> — Korean pop updates</li>
+                </ul>
+            </div>
+        </div>
+        
+        <footer>
+            <p><strong>Inception Point AI</strong> ⚡ Podcast Asset Tracker</p>
+            <div class="refresh-note">🔄 Auto-refreshes every 6 hours</div>
+            <p style="margin-top: 10px; font-size: 0.75rem;">Data: QP-1 Network | Revenue syncs from manual entry or CSV import | Stored locally</p>
+        </footer>
+    </div>
+    
+    <script>
+        function sortTable(n) {
+            const table = document.getElementById("dataTable");
+            let switching = true, shouldSwitch, dir = "asc", switchcount = 0;
+            
+            // Remove existing sort indicators
+            const headers = table.querySelectorAll("th");
+            headers.forEach(h => h.classList.remove("sorted-asc", "sorted-desc"));
+            
+            while (switching) {
+                switching = false;
+                const rows = table.rows;
+                
+                for (let i = 1; i < rows.length - 1; i++) {
+                    shouldSwitch = false;
+                    const x = rows[i].getElementsByTagName("TD")[n];
+                    const y = rows[i + 1].getElementsByTagName("TD")[n];
+                    
+                    let xVal = x.textContent.replace(/[,$%]/g, '').trim();
+                    let yVal = y.textContent.replace(/[,$%]/g, '').trim();
+                    
+                    // Try to parse as numbers
+                    const xNum = parseFloat(xVal);
+                    const yNum = parseFloat(yVal);
+                    
+                    if (!isNaN(xNum) && !isNaN(yNum)) {
+                        if (dir == "asc" && xNum > yNum) { shouldSwitch = true; break; }
+                        if (dir == "desc" && xNum < yNum) { shouldSwitch = true; break; }
+                    } else {
+                        if (dir == "asc" && xVal.toLowerCase() > yVal.toLowerCase()) { shouldSwitch = true; break; }
+                        if (dir == "desc" && xVal.toLowerCase() < yVal.toLowerCase()) { shouldSwitch = true; break; }
+                    }
+                }
+                
+                if (shouldSwitch) {
+                    rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                    switching = true;
+                    switchcount++;
+                } else {
+                    if (switchcount == 0 && dir == "asc") {
+                        dir = "desc";
+                        switching = true;
+                    }
+                }
+            }
+            
+            headers[n].classList.add(dir === "asc" ? "sorted-asc" : "sorted-desc");
+        }
+        
+        function filterTable() {
+            const categoryFilter = document.getElementById("categoryFilter").value.toLowerCase();
+            const networkFilter = document.getElementById("networkFilter").value.toLowerCase();
+            const searchFilter = document.getElementById("searchFilter").value.toLowerCase();
+            const table = document.getElementById("dataTable");
+            const rows = table.getElementsByTagName("tr");
+            
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                const category = row.getAttribute("data-category")?.toLowerCase() || "";
+                const network = row.getAttribute("data-network")?.toLowerCase() || "";
+                const title = row.cells[1]?.textContent.toLowerCase() || "";
+                
+                const categoryMatch = !categoryFilter || category.includes(categoryFilter);
+                const networkMatch = !networkFilter || network.includes(networkFilter);
+                const searchMatch = !searchFilter || title.includes(searchFilter);
+                
+                row.style.display = (categoryMatch && networkMatch && searchMatch) ? "" : "none";
+            }
+        }
+        
+        // Revenue Data Store
+        let revenueData = JSON.parse(localStorage.getItem('spreaker_revenue') || '[]');
+// Pre-populated from Spreaker stats (Feb 2, 2026)
+const initialRevenueData = [
+    {title: "Katie Brown", revenue: 869.57, downloads: 357070},
+    {title: "QP-2", revenue: 660.86, downloads: 276117},
+    {title: "QP-1", revenue: 632.98, downloads: 260719},
+    {title: "QP - Daily", revenue: 600.10, downloads: 242642},
+    {title: "QP-3", revenue: 378.99, downloads: 159123},
+    {title: "QP - Blended", revenue: 345.77, downloads: 139347},
+    {title: "Katie Brown 2", revenue: 206.98, downloads: 82151},
+    {title: "QP-4", revenue: 159.22, downloads: 65889},
+    {title: "QP-JT2", revenue: 108.18, downloads: 45225},
+    {title: "QP-5", revenue: 65.27, downloads: 27426},
+    {title: "David McHealy", revenue: 42.15, downloads: 14890},
+    {title: "QP-JP", revenue: 15.97, downloads: 6653},
+    {title: "Jason St Onge", revenue: 15.53, downloads: 5725},
+    {title: "John Peed", revenue: 2.91, downloads: 1146},
+    {title: "QP-JNP", revenue: 2.79, downloads: 1050},
+    {title: "Jeanine Wright", revenue: 2.73, downloads: 1104},
+    {title: "JNP-2", revenue: 1.27, downloads: 517},
+    {title: "Approov Mobile Security", revenue: 0.27, downloads: 101}
+];
+if (revenueData.length === 0) { revenueData = initialRevenueData; }
+        
+        function updateRevenueDisplay() {
+            const tbody = document.getElementById('revenueTableBody');
+            
+            if (revenueData.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: #8892b0; padding: 40px;">
+                            <div style="font-size: 2rem; margin-bottom: 10px;">📊</div>
+                            <div>No revenue data yet</div>
+                            <div style="font-size: 0.8rem; margin-top: 8px;">Import a CSV from Spreaker or enter values manually</div>
+                        </td>
+                    </tr>`;
+                document.getElementById('totalRevenue').textContent = '$0.00';
+                document.getElementById('revenuePerK').textContent = '$0.00';
+                document.getElementById('monthRevenue').textContent = '$0.00';
+                document.getElementById('earningShowCount').textContent = '0';
+                document.getElementById('topEarnerName').textContent = '—';
+                document.getElementById('topEarnerAmount').textContent = '$0.00';
+                document.getElementById('avgRevenue').textContent = '$0.00';
+                document.getElementById('efficiencyRate').textContent = '$0.00';
+                return;
+            }
+            
+            // Sort by revenue descending
+            const sorted = [...revenueData].sort((a, b) => b.revenue - a.revenue);
+            const totalRev = sorted.reduce((sum, r) => sum + r.revenue, 0);
+            const totalDL = sorted.reduce((sum, r) => sum + (r.downloads || 0), 0);
+            const avgRev = totalRev / sorted.length;
+            const efficiency = totalDL > 0 ? (totalRev / totalDL) * 1000 : 0;
+            
+            // Update summary stats
+            document.getElementById('totalRevenue').textContent = formatCurrency(totalRev);
+            document.getElementById('revenuePerK').textContent = formatCurrency(efficiency);
+            document.getElementById('monthRevenue').textContent = formatCurrency(totalRev);
+            document.getElementById('earningShowCount').textContent = sorted.filter(r => r.revenue > 0).length;
+            document.getElementById('topEarnerName').textContent = sorted[0]?.title || '—';
+            document.getElementById('topEarnerAmount').textContent = formatCurrency(sorted[0]?.revenue || 0);
+            document.getElementById('avgRevenue').textContent = formatCurrency(avgRev);
+            document.getElementById('efficiencyRate').textContent = formatCurrency(efficiency);
+            
+            // Build table rows
+            tbody.innerHTML = sorted.slice(0, 25).map((item, i) => {
+                const perK = item.downloads > 0 ? (item.revenue / item.downloads) * 1000 : 0;
+                const trendIcon = item.trend === 'up' ? '📈' : item.trend === 'down' ? '📉' : '➡️';
+                const rankBadge = i < 3 ? ['🥇', '🥈', '🥉'][i] : (i + 1);
+                
+                return `
+                    <tr>
+                        <td style="font-size: 1.1rem;">${rankBadge}</td>
+                        <td class="title-cell">${item.title}</td>
+                        <td class="number-cell">${item.downloads?.toLocaleString() || '—'}</td>
+                        <td class="number-cell highlight">${formatCurrency(item.revenue)}</td>
+                        <td class="number-cell" style="color: ${perK > efficiency ? '#64ffda' : '#8892b0'};">${formatCurrency(perK)}</td>
+                        <td style="text-align: center;">${trendIcon}</td>
+                    </tr>`;
+            }).join('');
+        }
+        
+        function formatCurrency(val) {
+            return '$' + val.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+        
+        function handleCSVUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split('\n').filter(l => l.trim());
+                const headers = lines[0].toLowerCase();
+                
+                // Try to detect column indices
+                const cols = headers.split(',').map(h => h.trim().replace(/"/g, ''));
+                const titleIdx = cols.findIndex(c => c.includes('title') || c.includes('show') || c.includes('name'));
+                const revenueIdx = cols.findIndex(c => c.includes('revenue') || c.includes('earning') || c.includes('amount') || c.includes('$'));
+                const downloadIdx = cols.findIndex(c => c.includes('download') || c.includes('plays') || c.includes('listen'));
+                
+                if (titleIdx === -1 || revenueIdx === -1) {
+                    alert('CSV must have columns for show title and revenue. Looking for: title/show/name and revenue/earnings/amount');
+                    return;
+                }
+                
+                const imported = [];
+                for (let i = 1; i < lines.length; i++) {
+                    const row = parseCSVRow(lines[i]);
+                    if (row.length > Math.max(titleIdx, revenueIdx)) {
+                        const title = row[titleIdx]?.trim();
+                        const revenue = parseFloat(row[revenueIdx]?.replace(/[$,]/g, '')) || 0;
+                        const downloads = downloadIdx >= 0 ? parseInt(row[downloadIdx]?.replace(/,/g, '')) || 0 : 0;
+                        
+                        if (title && revenue > 0) {
+                            imported.push({ title, revenue, downloads, trend: 'none', importedAt: new Date().toISOString() });
+                        }
+                    }
+                }
+                
+                if (imported.length > 0) {
+                    revenueData = imported;
+                    localStorage.setItem('spreaker_revenue', JSON.stringify(revenueData));
+                    updateRevenueDisplay();
+                    alert(`Imported ${imported.length} shows with revenue data!`);
+                } else {
+                    alert('No valid revenue data found in CSV');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+        
+        function parseCSVRow(row) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let char of row) {
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current.trim());
+            return result;
+        }
+        
+        function quickAddRevenue() {
+            const title = document.getElementById('quickAddTitle').value.trim();
+            const revenue = parseFloat(document.getElementById('quickAddRevenue').value) || 0;
+            const downloads = parseInt(document.getElementById('quickAddDownloads').value) || 0;
+            
+            if (!title) {
+                alert('Please enter a show title');
+                return;
+            }
+            
+            // Update existing or add new
+            const existing = revenueData.findIndex(r => r.title.toLowerCase() === title.toLowerCase());
+            if (existing >= 0) {
+                revenueData[existing].revenue = revenue;
+                revenueData[existing].downloads = downloads || revenueData[existing].downloads;
+            } else {
+                revenueData.push({ title, revenue, downloads, trend: 'none', addedAt: new Date().toISOString() });
+            }
+            
+            localStorage.setItem('spreaker_revenue', JSON.stringify(revenueData));
+            updateRevenueDisplay();
+            
+            // Clear inputs
+            document.getElementById('quickAddTitle').value = '';
+            document.getElementById('quickAddRevenue').value = '';
+            document.getElementById('quickAddDownloads').value = '';
+        }
+        
+        function exportRevenueCSV() {
+            if (revenueData.length === 0) {
+                alert('No revenue data to export');
+                return;
+            }
+            
+            const headers = ['Title', 'Downloads', 'Revenue', '$/1K Downloads'];
+            const rows = revenueData.map(r => {
+                const perK = r.downloads > 0 ? (r.revenue / r.downloads) * 1000 : 0;
+                return [
+                    '"' + r.title.replace(/"/g, '""') + '"',
+                    r.downloads || 0,
+                    r.revenue.toFixed(2),
+                    perK.toFixed(2)
+                ].join(',');
+            });
+            
+            const csv = [headers.join(','), ...rows].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'spreaker_revenue_' + new Date().toISOString().split('T')[0] + '.csv';
+            a.click();
+        }
+        
+        function sortRevenueTable(n) {
+            // Simple re-sort by column
+            if (n === 3) { // Revenue
+                revenueData.sort((a, b) => b.revenue - a.revenue);
+            } else if (n === 2) { // Downloads
+                revenueData.sort((a, b) => (b.downloads || 0) - (a.downloads || 0));
+            } else if (n === 4) { // Efficiency
+                revenueData.sort((a, b) => {
+                    const effA = a.downloads > 0 ? a.revenue / a.downloads : 0;
+                    const effB = b.downloads > 0 ? b.revenue / b.downloads : 0;
+                    return effB - effA;
+                });
+            } else if (n === 1) { // Title
+                revenueData.sort((a, b) => a.title.localeCompare(b.title));
+            }
+            updateRevenueDisplay();
+        }
+        
+        // Sync manual inputs from main table to revenue data
+        function syncManualRevenue() {
+            const mainTable = document.getElementById('dataTable');
+            const rows = mainTable.querySelectorAll('tbody tr');
+            
+            rows.forEach(row => {
+                const title = row.querySelector('.title-cell')?.textContent.trim();
+                const revenueInput = row.querySelector('.manual-input')?.value;
+                const downloadsCell = row.cells[3]?.textContent.replace(/,/g, '');
+                
+                if (title && revenueInput) {
+                    const revenue = parseFloat(revenueInput.replace(/[$,]/g, '')) || 0;
+                    const downloads = parseInt(downloadsCell) || 0;
+                    
+                    if (revenue > 0) {
+                        const existing = revenueData.findIndex(r => r.title === title);
+                        if (existing >= 0) {
+                            revenueData[existing].revenue = revenue;
+                            revenueData[existing].downloads = downloads;
+                        } else {
+                            revenueData.push({ title, revenue, downloads, trend: 'none' });
+                        }
+                    }
+                }
+            });
+            
+            localStorage.setItem('spreaker_revenue', JSON.stringify(revenueData));
+            updateRevenueDisplay();
+        }
+        
+        // Listen for manual input changes
+        document.querySelectorAll('.manual-input').forEach(input => {
+            input.addEventListener('change', syncManualRevenue);
+        });
+        
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', updateRevenueDisplay);
+        updateRevenueDisplay();
+        
+        function exportToCSV() {
+            const table = document.getElementById("dataTable");
+            let csv = [];
+            const rows = table.querySelectorAll("tr");
+            
+            for (let row of rows) {
+                const cols = row.querySelectorAll("td, th");
+                let rowData = [];
+                for (let col of cols) {
+                    let text = col.textContent.replace(/"/g, '""').trim();
+                    // Handle input fields
+                    const input = col.querySelector("input");
+                    if (input) text = input.value || "";
+                    rowData.push('"' + text + '"');
+                }
+                csv.push(rowData.join(","));
+            }
+            
+            const csvContent = csv.join("\n");
+            const blob = new Blob([csvContent], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "podcast_dashboard_" + new Date().toISOString().split("T")[0] + ".csv";
+            a.click();
+        }
+    </script>
+</body>
+</html>

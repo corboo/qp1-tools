@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QP-1 Spreaker Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e4e4e7;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .subtitle { color: #a1a1aa; margin-bottom: 24px; font-size: 0.9rem; }
+        
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .metric-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .metric-label { color: #a1a1aa; font-size: 0.85rem; margin-bottom: 8px; }
+        .metric-value { font-size: 1.8rem; font-weight: 700; }
+        .metric-change {
+            font-size: 0.85rem;
+            margin-top: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+        .metric-change.positive { background: rgba(34,197,94,0.2); color: #4ade80; }
+        .metric-change.negative { background: rgba(239,68,68,0.2); color: #f87171; }
+        
+        /* Charts */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+        .chart-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 24px;
+        }
+        .chart-card h3 { margin-bottom: 16px; font-size: 1.1rem; }
+        .chart-container { position: relative; height: 300px; }
+        
+        /* Yearly Totals */
+        .yearly-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .yearly-card {
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+        .yearly-card .year { color: #a1a1aa; font-size: 0.85rem; }
+        .yearly-card .amount { font-size: 1.4rem; font-weight: 600; color: #4ade80; }
+        
+        /* Table */
+        .table-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 24px;
+            overflow-x: auto;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        th { color: #a1a1aa; font-weight: 500; font-size: 0.85rem; }
+        td { font-size: 0.95rem; }
+        tr:hover { background: rgba(255,255,255,0.03); }
+        .text-right { text-align: right; }
+        
+        /* Footer */
+        .footer { text-align: center; color: #71717a; font-size: 0.8rem; margin-top: 40px; }
+        
+        @media (max-width: 768px) {
+            .charts-grid { grid-template-columns: 1fr; }
+            .yearly-grid { grid-template-columns: 1fr; }
+            .metric-value { font-size: 1.4rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 QP-1 Spreaker Dashboard</h1>
+        <p class="subtitle">Last updated: February 2, 2026 • Data from Spreaker CMS</p>
+        
+        <!-- Key Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">📥 Downloads (30d)</div>
+                <div class="metric-value">713,577</div>
+                <span class="metric-change positive">↑ +10%</span>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">👁️ Ad Impressions (30d)</div>
+                <div class="metric-value">1,686,895</div>
+                <span class="metric-change negative">↓ -26%</span>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">💵 Ad Revenue (30d)</div>
+                <div class="metric-value">$4,111.54</div>
+                <span class="metric-change negative">↓ -62%</span>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">🎙️ Shows / Episodes</div>
+                <div class="metric-value">5,265 / 246K</div>
+            </div>
+        </div>
+        
+        <!-- Yearly Totals -->
+        <div class="yearly-grid">
+            <div class="yearly-card">
+                <div class="year">2025 Total</div>
+                <div class="amount">$69,067.97</div>
+            </div>
+            <div class="yearly-card">
+                <div class="year">2024 Total</div>
+                <div class="amount">$72,223.10</div>
+            </div>
+            <div class="yearly-card">
+                <div class="year">2023 Total</div>
+                <div class="amount">$5,676.92</div>
+            </div>
+        </div>
+        
+        <!-- Charts -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>📈 Monthly Revenue</h3>
+                <div class="chart-container">
+                    <canvas id="revenueChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>📊 Revenue by Account (30d)</h3>
+                <div class="chart-container">
+                    <canvas id="accountChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Payment History Table -->
+        <div class="table-card">
+            <h3 style="margin-bottom: 16px;">💳 Payment History</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th class="text-right">Amount</th>
+                        <th>Status</th>
+                        <th>Paid Date</th>
+                    </tr>
+                </thead>
+                <tbody id="paymentTable"></tbody>
+            </table>
+        </div>
+        
+        <p class="footer">QP-1 Podcast Network • Powered by Spreaker</p>
+    </div>
+    
+    <script>
+        // Data
+        const paymentHistory = [
+            {month: "November 2025", amount: 7474.21, status: "PAID", paidDate: "Jan 26, 2026"},
+            {month: "October 2025", amount: 5886.17, status: "PAID", paidDate: "Dec 29, 2025"},
+            {month: "September 2025", amount: 8499.17, status: "PAID", paidDate: "Nov 25, 2025"},
+            {month: "August 2025", amount: 6603.91, status: "PAID", paidDate: "Oct 28, 2025"},
+            {month: "July 2025", amount: 6084.95, status: "PAID", paidDate: "Sep 26, 2025"},
+            {month: "June 2025", amount: 6465.20, status: "PAID", paidDate: "Aug 27, 2025"},
+            {month: "May 2025", amount: 5050.12, status: "PAID", paidDate: "Jul 29, 2025"},
+            {month: "April 2025", amount: 4597.62, status: "PAID", paidDate: "Jun 26, 2025"},
+            {month: "March 2025", amount: 6643.29, status: "PAID", paidDate: "May 27, 2025"},
+            {month: "February 2025", amount: 6334.82, status: "PAID", paidDate: "Apr 28, 2025"},
+            {month: "January 2025", amount: 5428.51, status: "PAID", paidDate: "Mar 26, 2025"},
+            {month: "December 2024", amount: 10317.55, status: "PAID", paidDate: "Feb 26, 2025"},
+        ];
+        
+        const accountRevenue = [
+            {name: "Katie Brown", revenue: 869.57},
+            {name: "QP-2", revenue: 660.86},
+            {name: "QP-1", revenue: 632.98},
+            {name: "QP - Daily", revenue: 600.10},
+            {name: "QP-3", revenue: 378.99},
+            {name: "QP - Blended", revenue: 345.77},
+            {name: "Katie Brown 2", revenue: 206.98},
+            {name: "QP-4", revenue: 159.22},
+            {name: "QP-JT2", revenue: 108.18},
+            {name: "QP-5", revenue: 65.27},
+        ];
+        
+        // Populate payment table
+        const tableBody = document.getElementById('paymentTable');
+        paymentHistory.forEach(p => {
+            tableBody.innerHTML += `
+                <tr>
+                    <td>${p.month}</td>
+                    <td class="text-right">$${p.amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <td><span style="color: #4ade80;">✓ ${p.status}</span></td>
+                    <td>${p.paidDate}</td>
+                </tr>
+            `;
+        });
+        
+        // Revenue Chart
+        new Chart(document.getElementById('revenueChart'), {
+            type: 'line',
+            data: {
+                labels: paymentHistory.map(p => p.month.split(' ')[0].slice(0,3) + ' ' + p.month.split(' ')[1].slice(2)).reverse(),
+                datasets: [{
+                    label: 'Revenue',
+                    data: paymentHistory.map(p => p.amount).reverse(),
+                    borderColor: '#4ade80',
+                    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => '$' + ctx.raw.toLocaleString('en-US', {minimumFractionDigits: 2})
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255,255,255,0.1)' },
+                        ticks: { 
+                            color: '#a1a1aa',
+                            callback: v => '$' + (v/1000) + 'k'
+                        }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#a1a1aa' }
+                    }
+                }
+            }
+        });
+        
+        // Account Revenue Chart
+        new Chart(document.getElementById('accountChart'), {
+            type: 'bar',
+            data: {
+                labels: accountRevenue.map(a => a.name),
+                datasets: [{
+                    label: 'Revenue',
+                    data: accountRevenue.map(a => a.revenue),
+                    backgroundColor: [
+                        '#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#eab308',
+                        '#22c55e', '#14b8a6', '#06b6d4', '#6366f1', '#a855f7'
+                    ],
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => '$' + ctx.raw.toLocaleString('en-US', {minimumFractionDigits: 2})
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255,255,255,0.1)' },
+                        ticks: { 
+                            color: '#a1a1aa',
+                            callback: v => '$' + v
+                        }
+                    },
+                    y: {
+                        grid: { display: false },
+                        ticks: { color: '#a1a1aa' }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
