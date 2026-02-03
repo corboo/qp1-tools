@@ -343,11 +343,20 @@ def main():
     )
     
     image_uri = None
+    image_direction = ""
     if uploaded_image:
         st.image(uploaded_image, caption="Reference image - videos will be styled based on this", width=300)
         # Convert to data URI for LTX API
         content_type = f"image/{uploaded_image.type.split('/')[-1]}" if '/' in uploaded_image.type else "image/jpeg"
         image_uri = image_to_data_uri(uploaded_image.getvalue(), content_type)
+        
+        # Image direction prompt
+        image_direction = st.text_area(
+            "🎬 Image Animation Direction (Optional)",
+            placeholder="e.g., 'Slow gentle zoom in, soft lighting shifts, subtle movement'\n'Camera slowly pans right, dreamy atmosphere'\n'Breathing motion, particles floating'",
+            help="Add specific directions for how to animate your reference image. This gets combined with auto-generated scene prompts."
+        )
+        
         st.success("✅ Reference image loaded - all video clips will use this as a visual guide")
     
     if uploaded_file:
@@ -415,8 +424,14 @@ def main():
                         status_text.text(f"🎥 Step 3/4: Generating clip {i+1}/{num_clips}...")
                         
                         clip_path = tmp_path / f"clip_{i:03d}.mp4"
+                        
+                        # Combine scene prompt with image direction if provided
+                        full_prompt = prompt_data["prompt"]
+                        if image_uri and image_direction:
+                            full_prompt = f"{image_direction}. {prompt_data['prompt']}"
+                        
                         generate_video_clip(
-                            prompt_data["prompt"],
+                            full_prompt,
                             prompt_data["duration"],
                             clip_path,
                             keys['ltx'],
