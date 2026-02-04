@@ -124,32 +124,6 @@ def get_audio_duration(audio_path):
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     return float(result.stdout.strip())
 
-def compress_audio_for_whisper(audio_path, max_size_mb=24):
-    """Compress audio to fit within Whisper's 25MB limit."""
-    file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-    
-    if file_size_mb <= max_size_mb:
-        return audio_path  # No compression needed
-    
-    # Calculate target bitrate to get under limit
-    duration = get_audio_duration(audio_path)
-    target_bitrate = int((max_size_mb * 8 * 1024) / duration)  # kbps
-    target_bitrate = max(32, min(target_bitrate, 128))  # Clamp to reasonable range
-    
-    compressed_path = Path(audio_path).parent / f"compressed_{Path(audio_path).name}"
-    compressed_path = compressed_path.with_suffix('.mp3')
-    
-    cmd = [
-        "ffmpeg", "-y", "-i", str(audio_path),
-        "-ac", "1",  # Mono
-        "-ar", "16000",  # 16kHz (Whisper's native)
-        "-b:a", f"{target_bitrate}k",
-        str(compressed_path)
-    ]
-    
-    subprocess.run(cmd, check=True, capture_output=True)
-    return compressed_path
-
 def transcribe_audio(audio_path, api_key, progress_callback=None):
     """Transcribe audio using OpenAI Whisper API with timestamps."""
     if progress_callback:
@@ -186,8 +160,7 @@ def transcribe_audio(audio_path, api_key, progress_callback=None):
     req.add_header("Authorization", f"Bearer {api_key}")
     req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
     
-    # Longer timeout for longer files (up to 10 min timeout for long audio)
-    with urllib.request.urlopen(req, timeout=600) as resp:
+    with urllib.request.urlopen(req, timeout=180) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 def generate_scene_prompts(transcript_data, duration, style, settings, api_key, custom_shots=None, shot_format=None):
@@ -696,19 +669,11 @@ For the conclusion -> Wide shot of sunset over city, hopeful atmosphere""",
                 status_text = st.empty()
                 
                 try:
-                    # Step 1: Transcribe (compress if needed for Whisper's 25MB limit)
-                    file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-                    if file_size_mb > 24:
-                        status_text.text(f"📦 Compressing audio ({file_size_mb:.1f}MB → <24MB for transcription)...")
-                        progress_bar.progress(5)
-                        audio_for_transcription = compress_audio_for_whisper(audio_path)
-                    else:
-                        audio_for_transcription = audio_path
-                    
+                    # Step 1: Transcribe
                     status_text.text("📝 Step 1/4: Transcribing audio...")
                     progress_bar.progress(10)
                     
-                    transcript_data = transcribe_audio(audio_for_transcription, keys['openai'])
+                    transcript_data = transcribe_audio(audio_path, keys['openai'])
                     transcript_text = transcript_data.get("text", "") if isinstance(transcript_data, dict) else transcript_data
                     
                     with st.expander("📄 Transcript"):
