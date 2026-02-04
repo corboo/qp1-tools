@@ -1,6 +1,7 @@
 """
-Audio-to-Video Generator
-Streamlit web app for generating videos from audio files.
+FORGE - Frame Output & Rendering Generation Engine
+AI-powered audio-to-video generation tool
+Built by CB ⚡
 """
 
 import streamlit as st
@@ -12,22 +13,31 @@ from pathlib import Path
 import urllib.request
 import urllib.error
 import os
+import base64
+import re
 
 # ============================================================================
 # Configuration
 # ============================================================================
 
 st.set_page_config(
-    page_title="Audio to Video Generator",
-    page_icon="🎬",
-    layout="centered"
+    page_title="FORGE | Audio to Video",
+    page_icon="⚡",
+    layout="wide"
 )
 
 # LTX Video settings
 LTX_API_BASE = "https://api.ltx.video/v1"
-LTX_MODEL = "ltx-2-fast"
-LTX_RESOLUTION = "1920x1080"
-LTX_FPS = 25
+LTX_MODELS = {
+    "Fast (Recommended)": "ltx-2-fast",
+    "Pro (Higher Quality)": "ltx-2-pro"
+}
+LTX_RESOLUTIONS = {
+    "1080p (1920x1080)": "1920x1080",
+    "1440p (2560x1440)": "2560x1440",
+    "4K (3840x2160)": "3840x2160"
+}
+LTX_FPS_OPTIONS = [25, 50]
 LTX_REQUEST_TIMEOUT = 300
 
 # Valid durations for LTX at 1080p/25fps
@@ -37,15 +47,55 @@ VALID_DURATIONS = [6, 8, 10, 12, 14, 16, 18, 20]
 WHISPER_MODEL = "whisper-1"
 OPENAI_MODEL = "gpt-4o"
 
-# Style presets
+# Camera motion presets
+CAMERA_MOTIONS = [
+    "Auto (AI decides)",
+    "Static",
+    "Dolly In",
+    "Dolly Out",
+    "Pan Left",
+    "Pan Right",
+    "Tilt Up",
+    "Tilt Down",
+    "Jib Up",
+    "Jib Down",
+    "Crane Shot",
+    "Tracking Shot",
+    "Handheld",
+    "Orbit",
+    "Focus Shift"
+]
+
+# Style presets with detailed prompts
 STYLE_PRESETS = {
-    "Cinematic Stock Footage": "cinematic stock footage, professional quality, smooth camera movements",
-    "Nature Documentary": "nature documentary style, BBC Earth quality, wildlife and landscapes",
-    "News/Corporate": "professional news broadcast style, clean and modern, corporate aesthetic",
-    "Artistic/Abstract": "artistic abstract visuals, creative color grading, experimental cinematography",
-    "Vintage/Retro": "vintage film aesthetic, warm colors, nostalgic mood, film grain",
-    "Tech/Futuristic": "futuristic technology aesthetic, sleek and modern, digital effects",
-    "Custom": ""
+    "Cinematic": {
+        "description": "cinematic stock footage, professional quality, smooth camera movements, cinematic color grading, shallow depth of field",
+        "shot_styles": ["wide establishing", "medium shot", "close-up detail", "tracking shot", "aerial view"]
+    },
+    "Documentary": {
+        "description": "documentary style, BBC Earth quality, observational footage, natural lighting, authentic moments",
+        "shot_styles": ["fly-on-wall", "interview framing", "B-roll coverage", "archival aesthetic", "talking head"]
+    },
+    "News/Corporate": {
+        "description": "professional news broadcast style, clean and modern, corporate aesthetic, blue and white tones",
+        "shot_styles": ["anchor desk", "split screen", "lower third space", "clean backdrop", "professional lighting"]
+    },
+    "Artistic/Abstract": {
+        "description": "artistic abstract visuals, creative color grading, experimental cinematography, symbolic imagery",
+        "shot_styles": ["extreme close-up", "dutch angle", "silhouette", "lens flare", "double exposure"]
+    },
+    "Vintage/Retro": {
+        "description": "vintage film aesthetic, warm colors, nostalgic mood, film grain, 70s/80s style",
+        "shot_styles": ["soft focus", "lens distortion", "vignette", "overexposed", "sepia tones"]
+    },
+    "Tech/Futuristic": {
+        "description": "futuristic technology aesthetic, sleek and modern, digital effects, neon accents, cyberpunk",
+        "shot_styles": ["holographic", "data visualization", "circuit patterns", "glitch effects", "wireframe"]
+    },
+    "Custom": {
+        "description": "",
+        "shot_styles": []
+    }
 }
 
 # ============================================================================
@@ -55,15 +105,12 @@ STYLE_PRESETS = {
 def get_api_keys():
     """Get API keys from Streamlit secrets or environment."""
     keys = {}
-    
-    # Try Streamlit secrets first, then environment variables
     try:
         keys['openai'] = st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
         keys['ltx'] = st.secrets.get("LTX_API_KEY") or os.environ.get("LTX_API_KEY")
     except Exception:
         keys['openai'] = os.environ.get("OPENAI_API_KEY")
         keys['ltx'] = os.environ.get("LTX_API_KEY")
-    
     return keys
 
 def get_audio_duration(audio_path):
@@ -78,7 +125,7 @@ def get_audio_duration(audio_path):
     return float(result.stdout.strip())
 
 def transcribe_audio(audio_path, api_key, progress_callback=None):
-    """Transcribe audio using OpenAI Whisper API."""
+    """Transcribe audio using OpenAI Whisper API with timestamps."""
     if progress_callback:
         progress_callback("Transcribing audio...")
     
@@ -102,7 +149,7 @@ def transcribe_audio(audio_path, api_key, progress_callback=None):
     body.append(f"--{boundary}".encode())
     body.append(b'Content-Disposition: form-data; name="response_format"')
     body.append(b"")
-    body.append(b"text")
+    body.append(b"verbose_json")  # Get timestamps
     body.append(f"--{boundary}--".encode())
     body.append(b"")
     
@@ -113,34 +160,78 @@ def transcribe_audio(audio_path, api_key, progress_callback=None):
     req.add_header("Authorization", f"Bearer {api_key}")
     req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
     
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        return resp.read().decode("utf-8")
+    with urllib.request.urlopen(req, timeout=180) as resp:
+        return json.loads(resp.read().decode("utf-8"))
 
-def generate_scene_prompts(transcript, duration, style, api_key, progress_callback=None):
+def generate_scene_prompts(transcript_data, duration, style, settings, api_key, custom_shots=None):
     """Generate scene prompts using OpenAI GPT-4."""
-    if progress_callback:
-        progress_callback("Generating scene descriptions...")
     
-    num_clips = max(4, min(20, int(duration / 12)))
+    # Extract text and segments from transcript
+    if isinstance(transcript_data, dict):
+        transcript_text = transcript_data.get("text", "")
+        segments = transcript_data.get("segments", [])
+    else:
+        transcript_text = transcript_data
+        segments = []
     
-    prompt = f"""Analyze this audio transcript and create {num_clips} video scene prompts for a visual accompaniment.
+    # Calculate number of clips based on density setting
+    density_multiplier = {
+        "Sparse (longer shots)": 0.5,
+        "Balanced": 1.0,
+        "Dense (more shots)": 1.5,
+        "Very Dense (rapid cuts)": 2.0
+    }
+    base_clips = max(4, min(30, int(duration / 12)))
+    num_clips = int(base_clips * density_multiplier.get(settings.get('density', 'Balanced'), 1.0))
+    num_clips = max(4, min(40, num_clips))
+    
+    # Build custom shots instruction
+    custom_shots_instruction = ""
+    if custom_shots and custom_shots.strip():
+        custom_shots_instruction = f"""
+IMPORTANT - USER-SPECIFIED SHOTS:
+The user has provided specific visual prompts they want at certain times. Incorporate these EXACTLY as specified:
+{custom_shots}
+
+For any gaps between user-specified shots, generate appropriate transitional visuals."""
+
+    # Build consistency instruction
+    consistency = settings.get('consistency', 50)
+    if consistency < 30:
+        consistency_instruction = "Allow significant visual variation between scenes. Each scene can look distinctly different."
+    elif consistency < 70:
+        consistency_instruction = "Maintain moderate visual consistency. Characters should look similar but environments can vary."
+    else:
+        consistency_instruction = "Maintain HIGH visual consistency. Characters must look identical across all scenes. Environments should share similar lighting and color palette."
+
+    # Camera motion preference
+    camera_motion = settings.get('camera_motion', 'Auto (AI decides)')
+    camera_instruction = ""
+    if camera_motion != "Auto (AI decides)":
+        camera_instruction = f"Preferred camera motion: {camera_motion}. Incorporate this style where appropriate."
+
+    prompt = f"""Analyze this audio transcript and create {num_clips} video scene prompts for visual accompaniment.
 
 TRANSCRIPT:
-{transcript}
+{transcript_text}
+
+{custom_shots_instruction}
 
 REQUIREMENTS:
-1. Create exactly {num_clips} scenes that flow with the content
+1. Create exactly {num_clips} scenes that flow with the audio content
 2. Each scene duration must be one of: {VALID_DURATIONS} seconds
-3. Total duration must be approximately {int(duration)} seconds (±5 seconds is OK)
+3. Total duration must be approximately {int(duration)} seconds (±5 seconds OK)
 4. Visual style: {style}
-5. Prompts should be detailed, cinematic descriptions for AI video generation
-6. Include camera movements, lighting, mood, and specific visual details
-7. Match scenes to the content being discussed at that point in the audio
+5. {consistency_instruction}
+6. {camera_instruction}
+7. Prompts should be DETAILED, cinematic descriptions for AI video generation
+8. Include: camera movements, lighting, mood, composition, specific visual details
+9. Match scenes to the CONTENT being discussed at that timestamp
 
 OUTPUT FORMAT (JSON array only, no other text):
 [
-    {{"prompt": "Detailed scene description...", "duration": 12}},
-    {{"prompt": "Next scene description...", "duration": 10}},
+    {{"prompt": "Detailed scene description with camera movement, lighting, composition...", "duration": 12, "timestamp": "0:00"}},
+    {{"prompt": "Next scene description...", "duration": 10, "timestamp": "0:12"}},
     ...
 ]"""
 
@@ -153,7 +244,8 @@ OUTPUT FORMAT (JSON array only, no other text):
     data = {
         "model": OPENAI_MODEL,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 4096
+        "max_tokens": 8192,
+        "temperature": 0.7
     }
     
     req = urllib.request.Request(url, method="POST")
@@ -161,7 +253,7 @@ OUTPUT FORMAT (JSON array only, no other text):
         req.add_header(k, v)
     req.data = json.dumps(data).encode()
     
-    with urllib.request.urlopen(req, timeout=90) as resp:
+    with urllib.request.urlopen(req, timeout=120) as resp:
         result = json.loads(resp.read().decode())
         content = result["choices"][0]["message"]["content"]
     
@@ -173,14 +265,18 @@ OUTPUT FORMAT (JSON array only, no other text):
     
     return json.loads(content.strip())
 
-def generate_video_clip(prompt, duration, output_path, api_key, image_uri=None):
-    """Generate a single video clip using LTX API.
-    
-    If image_uri is provided, uses image-to-video endpoint.
-    Otherwise uses text-to-video.
-    """
+def generate_video_clip(prompt, duration, output_path, api_key, settings, image_uri=None):
+    """Generate a single video clip using LTX API."""
     if duration not in VALID_DURATIONS:
         duration = min(VALID_DURATIONS, key=lambda x: abs(x - duration))
+    
+    model = LTX_MODELS.get(settings.get('model', 'Fast (Recommended)'), 'ltx-2-fast')
+    resolution = LTX_RESOLUTIONS.get(settings.get('resolution', '1080p (1920x1080)'), '1920x1080')
+    fps = settings.get('fps', 25)
+    
+    # Limit duration for pro model and higher resolutions
+    if model == "ltx-2-pro" or resolution != "1920x1080" or fps == 50:
+        duration = min(duration, 10)
     
     # Use image-to-video if we have a reference image
     if image_uri:
@@ -188,19 +284,19 @@ def generate_video_clip(prompt, duration, output_path, api_key, image_uri=None):
         data = {
             "image_uri": image_uri,
             "prompt": prompt,
-            "model": LTX_MODEL,
+            "model": model,
             "duration": duration,
-            "resolution": LTX_RESOLUTION,
-            "fps": LTX_FPS
+            "resolution": resolution,
+            "fps": fps
         }
     else:
         url = f"{LTX_API_BASE}/text-to-video"
         data = {
             "prompt": prompt,
-            "model": LTX_MODEL,
+            "model": model,
             "duration": duration,
-            "resolution": LTX_RESOLUTION,
-            "fps": LTX_FPS,
+            "resolution": resolution,
+            "fps": fps,
             "generate_audio": False
         }
     
@@ -222,10 +318,8 @@ def generate_video_clip(prompt, duration, output_path, api_key, image_uri=None):
                     break
                 f.write(chunk)
 
-
 def image_to_data_uri(image_bytes, content_type="image/jpeg"):
     """Convert image bytes to data URI for LTX API."""
-    import base64
     b64 = base64.b64encode(image_bytes).decode('utf-8')
     return f"data:{content_type};base64,{b64}"
 
@@ -267,101 +361,186 @@ def merge_audio(video_path, audio_path, output_path):
 # ============================================================================
 
 def main():
-    st.title("🎬 Audio to Video Generator")
-    st.markdown("Transform your audio into AI-generated video content")
+    # Header
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.title("⚡ FORGE")
+        st.markdown("*Frame Output & Rendering Generation Engine*")
+    with col2:
+        st.markdown("")
+        st.markdown("**Built by CB**")
+    
+    st.markdown("---")
     
     # Check for API keys
     keys = get_api_keys()
     
     if not keys.get('openai') or not keys.get('ltx'):
-        st.error("⚠️ Missing API keys. Please configure OPENAI_API_KEY and LTX_API_KEY in Streamlit secrets or environment variables.")
-        
+        st.error("⚠️ Missing API keys. Configure OPENAI_API_KEY and LTX_API_KEY in secrets.")
         with st.expander("How to configure API keys"):
             st.markdown("""
             **For Streamlit Cloud:**
-            1. Go to your app settings
-            2. Click "Secrets"
-            3. Add:
+            1. Go to your app settings → Secrets
+            2. Add:
             ```toml
             OPENAI_API_KEY = "sk-..."
             LTX_API_KEY = "ltxv_..."
             ```
-            
-            **For local development:**
-            Create `.streamlit/secrets.toml` with the same content.
             """)
         return
     
-    # Sidebar settings
+    # ========================================================================
+    # Sidebar - Settings
+    # ========================================================================
     with st.sidebar:
-        st.header("⚙️ Settings")
+        st.header("⚙️ Generation Settings")
         
+        # Visual Style
+        st.subheader("🎨 Visual Style")
         style_preset = st.selectbox(
-            "Visual Style",
+            "Style Preset",
             options=list(STYLE_PRESETS.keys()),
             index=0
         )
         
         if style_preset == "Custom":
-            custom_style = st.text_area(
+            style = st.text_area(
                 "Custom Style Description",
-                placeholder="e.g., underwater ocean documentary, blue tones, marine life"
+                placeholder="e.g., underwater ocean documentary, bioluminescent creatures, deep blue tones"
             )
-            style = custom_style
         else:
-            style = STYLE_PRESETS[style_preset]
+            style = STYLE_PRESETS[style_preset]["description"]
             st.caption(f"*{style}*")
         
         st.divider()
         
-        st.markdown("### About")
-        st.markdown("""
-        This tool:
-        1. 📝 Transcribes your audio
-        2. 🎬 Generates scene descriptions
-        3. 🎥 Creates video clips with AI
-        4. 🔗 Stitches everything together
+        # Quality Settings
+        st.subheader("📺 Quality")
         
-        **NEW:** Add a reference image to style all clips!
-        
-        Processing time: ~1 min per 10s of video
-        """)
-    
-    # Main content
-    uploaded_file = st.file_uploader(
-        "Upload Audio File",
-        type=["mp3", "wav", "m4a", "ogg", "flac"],
-        help="Supported formats: MP3, WAV, M4A, OGG, FLAC"
-    )
-    
-    # Optional reference image
-    st.markdown("---")
-    uploaded_image = st.file_uploader(
-        "📷 Reference Image (Optional)",
-        type=["jpg", "jpeg", "png", "webp"],
-        help="Upload an image to use as visual reference for all generated clips. The AI will animate and style videos based on this image."
-    )
-    
-    image_uri = None
-    image_direction = ""
-    if uploaded_image:
-        st.image(uploaded_image, caption="Reference image - videos will be styled based on this", width=300)
-        # Convert to data URI for LTX API
-        content_type = f"image/{uploaded_image.type.split('/')[-1]}" if '/' in uploaded_image.type else "image/jpeg"
-        image_uri = image_to_data_uri(uploaded_image.getvalue(), content_type)
-        
-        # Image direction prompt
-        image_direction = st.text_area(
-            "🎬 Image Animation Direction (Optional)",
-            placeholder="e.g., 'Slow gentle zoom in, soft lighting shifts, subtle movement'\n'Camera slowly pans right, dreamy atmosphere'\n'Breathing motion, particles floating'",
-            help="Add specific directions for how to animate your reference image. This gets combined with auto-generated scene prompts."
+        model_choice = st.selectbox(
+            "Model",
+            options=list(LTX_MODELS.keys()),
+            index=0,
+            help="Pro is higher quality but slower and limited to 10s clips"
         )
         
-        st.success("✅ Reference image loaded - all video clips will use this as a visual guide")
-    
-    if uploaded_file:
-        st.audio(uploaded_file)
+        resolution_choice = st.selectbox(
+            "Resolution",
+            options=list(LTX_RESOLUTIONS.keys()),
+            index=0,
+            help="Higher resolutions cost more and limit clip duration"
+        )
         
+        fps_choice = st.selectbox(
+            "Frame Rate",
+            options=LTX_FPS_OPTIONS,
+            index=0,
+            help="50fps for smoother motion (limits duration)"
+        )
+        
+        st.divider()
+        
+        # Shot Control
+        st.subheader("🎬 Shot Control")
+        
+        shot_density = st.select_slider(
+            "Shot Density",
+            options=["Sparse (longer shots)", "Balanced", "Dense (more shots)", "Very Dense (rapid cuts)"],
+            value="Balanced",
+            help="How many individual shots to generate"
+        )
+        
+        consistency = st.slider(
+            "Visual Consistency",
+            min_value=0,
+            max_value=100,
+            value=50,
+            help="Low = more variation, High = characters/settings stay consistent"
+        )
+        
+        camera_motion = st.selectbox(
+            "Camera Motion Preference",
+            options=CAMERA_MOTIONS,
+            index=0,
+            help="Suggest a camera movement style"
+        )
+        
+        st.divider()
+        
+        st.markdown("### ℹ️ About FORGE")
+        st.markdown("""
+        1. 📝 Transcribes audio (Whisper)
+        2. 🎬 Generates scene prompts (GPT-4)
+        3. 🎥 Creates video clips (LTX)
+        4. 🔗 Assembles final video
+        
+        **⏱️ ~1-2 min per 10s of video**
+        """)
+    
+    # ========================================================================
+    # Main Content Area
+    # ========================================================================
+    
+    # Two-column layout for inputs
+    input_col1, input_col2 = st.columns(2)
+    
+    with input_col1:
+        st.subheader("🎵 Audio Input")
+        uploaded_file = st.file_uploader(
+            "Upload Audio File",
+            type=["mp3", "wav", "m4a", "ogg", "flac"],
+            help="Supported: MP3, WAV, M4A, OGG, FLAC (max 30 min)"
+        )
+        
+        if uploaded_file:
+            st.audio(uploaded_file)
+    
+    with input_col2:
+        st.subheader("📷 Reference Image (Optional)")
+        uploaded_image = st.file_uploader(
+            "Upload Reference Image",
+            type=["jpg", "jpeg", "png", "webp"],
+            help="Videos will be styled/animated based on this image"
+        )
+        
+        image_uri = None
+        if uploaded_image:
+            st.image(uploaded_image, width=250)
+            content_type = f"image/{uploaded_image.type.split('/')[-1]}" if '/' in str(uploaded_image.type) else "image/jpeg"
+            image_uri = image_to_data_uri(uploaded_image.getvalue(), content_type)
+    
+    st.markdown("---")
+    
+    # Custom Shot Prompts Section
+    st.subheader("🎯 Custom Shot Prompts (Optional)")
+    st.markdown("*Specify exactly what visuals you want at specific timestamps. FORGE will incorporate these into the generation.*")
+    
+    custom_shots = st.text_area(
+        "Timestamped Visual Prompts",
+        placeholder="""Example format:
+0:00-0:15 - Wide establishing shot of city skyline at dawn, golden hour lighting
+0:15-0:30 - Medium shot of protagonist walking through busy street, shallow depth of field
+0:30-0:45 - Close-up of hands typing on laptop, soft office lighting
+1:00-1:15 - Drone shot pulling back from building rooftop, revealing cityscape
+
+Leave blank to let FORGE auto-generate all visuals based on the audio content.""",
+        height=150,
+        help="Format: TIMESTAMP - VISUAL DESCRIPTION. FORGE will match these to your audio."
+    )
+    
+    # Image Animation Direction (if image uploaded)
+    image_direction = ""
+    if uploaded_image:
+        image_direction = st.text_area(
+            "🎬 Image Animation Direction",
+            placeholder="e.g., 'Slow gentle zoom in, soft lighting shifts'\n'Camera slowly pans right, particles floating'\n'Subtle breathing motion, dreamy atmosphere'",
+            help="How should your reference image be animated? This applies to all clips using the image."
+        )
+    
+    st.markdown("---")
+    
+    # Generation Button
+    if uploaded_file:
         # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as tmp_audio:
             tmp_audio.write(uploaded_file.getvalue())
@@ -369,17 +548,56 @@ def main():
         
         try:
             duration = get_audio_duration(audio_path)
-            st.info(f"📊 Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
             
-            estimated_time = max(5, int(duration / 12)) * 1.5  # ~1.5 min per clip
-            st.caption(f"⏱️ Estimated processing time: {estimated_time:.0f}-{estimated_time*1.5:.0f} minutes")
+            # Info row
+            info_col1, info_col2, info_col3 = st.columns(3)
+            with info_col1:
+                st.metric("Duration", f"{duration:.1f}s ({duration/60:.1f} min)")
+            with info_col2:
+                est_clips = max(4, min(30, int(duration / 12)))
+                st.metric("Est. Clips", f"~{est_clips}")
+            with info_col3:
+                est_time = est_clips * 1.5
+                st.metric("Est. Time", f"~{est_time:.0f} min")
             
         except Exception as e:
             st.error(f"Could not read audio file: {e}")
             return
         
-        if st.button("🚀 Generate Video", type="primary", use_container_width=True):
-            
+        # Collect settings
+        settings = {
+            'model': model_choice,
+            'resolution': resolution_choice,
+            'fps': fps_choice,
+            'density': shot_density,
+            'consistency': consistency,
+            'camera_motion': camera_motion
+        }
+        
+        # Two buttons: AI's take vs User's take
+        btn_col1, btn_col2 = st.columns(2)
+        
+        with btn_col1:
+            generate_auto = st.button(
+                "🤖 Generate (AI's Take)",
+                type="primary",
+                use_container_width=True,
+                help="Let FORGE decide the visuals based on audio content"
+            )
+        
+        with btn_col2:
+            generate_custom = st.button(
+                "🎯 Generate (My Prompts)",
+                type="secondary",
+                use_container_width=True,
+                disabled=not custom_shots.strip(),
+                help="Use your custom timestamped prompts"
+            )
+        
+        should_generate = generate_auto or generate_custom
+        use_custom = generate_custom and custom_shots.strip()
+        
+        if should_generate:
             if not style:
                 st.error("Please select or enter a visual style")
                 return
@@ -396,20 +614,29 @@ def main():
                     status_text.text("📝 Step 1/4: Transcribing audio...")
                     progress_bar.progress(10)
                     
-                    transcript = transcribe_audio(audio_path, keys['openai'])
+                    transcript_data = transcribe_audio(audio_path, keys['openai'])
+                    transcript_text = transcript_data.get("text", "") if isinstance(transcript_data, dict) else transcript_data
                     
                     with st.expander("📄 Transcript"):
-                        st.text(transcript)
+                        st.text(transcript_text)
                     
                     # Step 2: Generate prompts
                     status_text.text("🎬 Step 2/4: Generating scene descriptions...")
                     progress_bar.progress(20)
                     
-                    prompts = generate_scene_prompts(transcript, duration, style, keys['openai'])
+                    prompts = generate_scene_prompts(
+                        transcript_data,
+                        duration,
+                        style,
+                        settings,
+                        keys['openai'],
+                        custom_shots=custom_shots if use_custom else None
+                    )
                     
                     with st.expander(f"🎬 Scene Prompts ({len(prompts)} scenes)"):
                         for i, p in enumerate(prompts):
-                            st.markdown(f"**Scene {i+1}** ({p['duration']}s)")
+                            ts = p.get('timestamp', f"Scene {i+1}")
+                            st.markdown(f"**{ts}** ({p['duration']}s)")
                             st.caption(p['prompt'])
                     
                     # Step 3: Generate video clips
@@ -428,14 +655,15 @@ def main():
                         # Combine scene prompt with image direction if provided
                         full_prompt = prompt_data["prompt"]
                         if image_uri and image_direction:
-                            full_prompt = f"{image_direction}. {prompt_data['prompt']}"
+                            full_prompt = f"{image_direction}. {full_prompt}"
                         
                         generate_video_clip(
                             full_prompt,
                             prompt_data["duration"],
                             clip_path,
                             keys['ltx'],
-                            image_uri=image_uri  # Pass reference image if provided
+                            settings,
+                            image_uri=image_uri
                         )
                         clip_paths.append(clip_path)
                     
@@ -456,13 +684,13 @@ def main():
                     with open(output_path, "rb") as f:
                         video_bytes = f.read()
                     
-                    st.success("🎉 Video generated successfully!")
+                    st.success("🎉 Video forged successfully!")
                     
                     # Video preview
                     st.video(video_bytes)
                     
                     # Download button
-                    output_filename = f"{Path(uploaded_file.name).stem}_video.mp4"
+                    output_filename = f"{Path(uploaded_file.name).stem}_forged.mp4"
                     st.download_button(
                         label="⬇️ Download Video",
                         data=video_bytes,
@@ -480,6 +708,9 @@ def main():
             audio_path.unlink()
         except:
             pass
+    
+    else:
+        st.info("👆 Upload an audio file to get started")
 
 if __name__ == "__main__":
     main()
