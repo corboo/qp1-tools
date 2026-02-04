@@ -163,7 +163,7 @@ def transcribe_audio(audio_path, api_key, progress_callback=None):
     with urllib.request.urlopen(req, timeout=180) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
-def generate_scene_prompts(transcript_data, duration, style, settings, api_key, custom_shots=None):
+def generate_scene_prompts(transcript_data, duration, style, settings, api_key, custom_shots=None, shot_format=None):
     """Generate scene prompts using OpenAI GPT-4."""
     
     # Extract text and segments from transcript
@@ -185,15 +185,34 @@ def generate_scene_prompts(transcript_data, duration, style, settings, api_key, 
     num_clips = int(base_clips * density_multiplier.get(settings.get('density', 'Balanced'), 1.0))
     num_clips = max(4, min(40, num_clips))
     
-    # Build custom shots instruction
+    # Build custom shots instruction based on format
     custom_shots_instruction = ""
     if custom_shots and custom_shots.strip():
+        format_instructions = {
+            "📝 Simple List": """The user provided a SIMPLE LIST of desired shots. 
+Distribute these shots intelligently throughout the video, matching them to appropriate moments in the audio.
+Add transitional shots as needed to fill gaps and maintain flow.""",
+            
+            "⏱️ Timestamps": """The user provided TIMESTAMPED shots.
+Place these shots at their specified times. Fill any gaps with appropriate transitional visuals.""",
+            
+            "💬 Script-Matched": """The user provided SCRIPT-MATCHED shots (visual cues tied to specific dialogue/topics).
+When the transcript discusses those topics, use the specified visuals. Generate appropriate B-roll for unspecified sections.""",
+            
+            "🔢 Numbered Sequence": """The user provided a NUMBERED SEQUENCE of shots in order.
+Use these shots in sequence, distributing timing evenly or as makes sense for the content."""
+        }
+        
+        format_hint = format_instructions.get(shot_format, format_instructions["📝 Simple List"])
+        
         custom_shots_instruction = f"""
-IMPORTANT - USER-SPECIFIED SHOTS:
-The user has provided specific visual prompts they want at certain times. Incorporate these EXACTLY as specified:
+IMPORTANT - USER-SPECIFIED VISUALS:
+{format_hint}
+
+User's shot list:
 {custom_shots}
 
-For any gaps between user-specified shots, generate appropriate transitional visuals."""
+Incorporate ALL user shots. Enhance with additional detail (camera movement, lighting, mood) but preserve their creative intent."""
 
     # Build consistency instruction
     consistency = settings.get('consistency', 50)
@@ -513,20 +532,60 @@ def main():
     
     # Custom Shot Prompts Section
     st.subheader("🎯 Custom Shot Prompts (Optional)")
-    st.markdown("*Specify exactly what visuals you want at specific timestamps. FORGE will incorporate these into the generation.*")
+    st.markdown("*Tell FORGE what visuals you want — use any format that works for you.*")
+    
+    # Format selector
+    shot_format = st.radio(
+        "Input Format",
+        options=["📝 Simple List", "⏱️ Timestamps", "💬 Script-Matched", "🔢 Numbered Sequence"],
+        horizontal=True,
+        help="Choose whatever format feels natural"
+    )
+    
+    # Dynamic placeholder based on format
+    placeholders = {
+        "📝 Simple List": """Just list the shots you want (FORGE will distribute them):
+
+- Wide establishing shot of city skyline at dawn
+- Close-up of hands typing on laptop  
+- Drone shot revealing coastal landscape
+- Medium shot of two people in conversation
+- Moody silhouette against window
+
+FORGE will intelligently place these throughout your video.""",
+        
+        "⏱️ Timestamps": """Specify exact timing:
+
+0:00-0:15 - Wide establishing shot of city skyline at dawn, golden hour lighting
+0:15-0:30 - Medium shot of protagonist walking through busy street
+0:45-1:00 - Close-up of hands typing on laptop, soft office lighting
+1:30-1:45 - Drone shot pulling back from building rooftop""",
+        
+        "💬 Script-Matched": """Match visuals to specific dialogue/content:
+
+When talking about "the early days" -> Vintage sepia-toned footage of old factory
+When mentioning "breakthrough moment" -> Dramatic close-up, lens flare, triumphant mood
+During the statistics section -> Clean data visualization, charts animating
+For the conclusion -> Wide shot of sunset over city, hopeful atmosphere""",
+        
+        "🔢 Numbered Sequence": """Shots in order (FORGE handles timing):
+
+1. Opening: Aerial shot of mountain landscape at sunrise
+2. Medium shot of subject walking through forest path
+3. Close-up detail of hands touching tree bark
+4. Wide shot of lake reflection, peaceful mood
+5. Final: Pull back to reveal full panorama"""
+    }
     
     custom_shots = st.text_area(
-        "Timestamped Visual Prompts",
-        placeholder="""Example format:
-0:00-0:15 - Wide establishing shot of city skyline at dawn, golden hour lighting
-0:15-0:30 - Medium shot of protagonist walking through busy street, shallow depth of field
-0:30-0:45 - Close-up of hands typing on laptop, soft office lighting
-1:00-1:15 - Drone shot pulling back from building rooftop, revealing cityscape
-
-Leave blank to let FORGE auto-generate all visuals based on the audio content.""",
-        height=150,
-        help="Format: TIMESTAMP - VISUAL DESCRIPTION. FORGE will match these to your audio."
+        "Your Visual Prompts",
+        placeholder=placeholders.get(shot_format, placeholders["📝 Simple List"]),
+        height=180,
+        help="Describe the visuals you want. Be as detailed or simple as you like."
     )
+    
+    # Store the format choice for the prompt
+    shot_input_format = shot_format
     
     # Image Animation Direction (if image uploaded)
     image_direction = ""
@@ -630,7 +689,8 @@ Leave blank to let FORGE auto-generate all visuals based on the audio content.""
                         style,
                         settings,
                         keys['openai'],
-                        custom_shots=custom_shots if use_custom else None
+                        custom_shots=custom_shots if use_custom else None,
+                        shot_format=shot_input_format if use_custom else None
                     )
                     
                     with st.expander(f"🎬 Scene Prompts ({len(prompts)} scenes)"):
