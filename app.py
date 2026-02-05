@@ -380,14 +380,46 @@ def merge_audio(video_path, audio_path, output_path):
 # ============================================================================
 
 def main():
-    # Header
-    col1, col2 = st.columns([3, 1])
+    # Custom CSS for IPAI branding
+    st.markdown("""
+    <style>
+        .stApp {
+            background-color: #2d2d2d;
+        }
+        .main .block-container {
+            padding-top: 2rem;
+        }
+        h1 {
+            background: linear-gradient(180deg, #c5c5c5 0%, #d4af37 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .stButton>button {
+            background: linear-gradient(135deg, #d4af37 0%, #e8c547 100%);
+            color: #2d2d2d;
+            border: none;
+            font-weight: 600;
+        }
+        .stButton>button:hover {
+            background: linear-gradient(135deg, #e8c547 0%, #f5d742 100%);
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Header with logo
+    col1, col2, col3 = st.columns([1, 4, 1])
     with col1:
+        try:
+            st.image("ipai-logo.jpg", width=60)
+        except:
+            pass
+    with col2:
         st.title("⚡ FORGE")
         st.markdown("*Frame Output & Rendering Generation Engine*")
-    with col2:
+    with col3:
         st.markdown("")
-        st.markdown("**Built by CB**")
+        st.caption("Built by CB")
     
     st.markdown("---")
     
