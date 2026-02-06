@@ -547,12 +547,23 @@ def main():
             st.audio(uploaded_file)
     
     with input_col2:
-        st.subheader("📷 Reference Images (Optional)")
+        st.subheader("🎨 Visual Style Notes (Optional)")
+        style_notes = st.text_area(
+            "Additional Style Guidance",
+            placeholder="e.g., 'moody noir lighting, high contrast, desaturated blues'\n'warm golden hour tones, lens flares, soft focus'\n'gritty documentary feel, handheld camera shake'",
+            height=100,
+            help="Describe the visual tone/mood. Applies to ALL clips on top of your style preset."
+        )
+        
+        st.markdown("---")
+        
+        st.subheader("🎬 Images to Animate (Optional)")
+        st.caption("⚠️ *These images will be animated directly — not used as style reference.*")
         uploaded_images = st.file_uploader(
-            "Upload Reference Images",
+            "Upload Images to Animate",
             type=["jpg", "jpeg", "png", "webp"],
             accept_multiple_files=True,
-            help="Upload one or more images. Videos will be styled/animated based on these images."
+            help="Each uploaded image will be animated directly. Use for animating specific stills, not for style matching."
         )
         
         image_uris = []
@@ -785,8 +796,14 @@ For the conclusion -> Wide shot of sunset over city, hopeful atmosphere""",
                             else:
                                 current_image_uri = image_uris[0] if image_uris else None
                         
-                        # Combine scene prompt with image direction if provided
+                        # Combine scene prompt with style notes and/or image direction
                         full_prompt = prompt_data["prompt"]
+                        
+                        # Apply style notes (always, if provided)
+                        if style_notes and style_notes.strip():
+                            full_prompt = f"{style_notes.strip()}. {full_prompt}"
+                        
+                        # Apply image animation direction (only if using images)
                         if current_image_uri and image_direction:
                             full_prompt = f"{image_direction}. {full_prompt}"
                         
