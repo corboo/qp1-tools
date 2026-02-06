@@ -339,8 +339,8 @@ OUTPUT FORMAT (JSON array only, no other text):
     
     return json.loads(content.strip())
 
-def generate_video_clip(prompt, duration, output_path, api_key, settings, image_uri=None):
-    """Generate a single video clip using LTX API."""
+def generate_video_clip(prompt, duration, output_path, api_key, settings, image_uri=None, max_retries=3):
+    """Generate a single video clip using LTX API with retry logic."""
     if duration not in VALID_DURATIONS:
         duration = min(VALID_DURATIONS, key=lambda x: abs(x - duration))
     
@@ -379,18 +379,33 @@ def generate_video_clip(prompt, duration, output_path, api_key, settings, image_
         "Content-Type": "application/json"
     }
     
-    req = urllib.request.Request(url, method="POST")
-    for k, v in headers.items():
-        req.add_header(k, v)
-    req.data = json.dumps(data).encode()
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(url, method="POST")
+            for k, v in headers.items():
+                req.add_header(k, v)
+            req.data = json.dumps(data).encode()
+            
+            with urllib.request.urlopen(req, timeout=LTX_REQUEST_TIMEOUT) as resp:
+                with open(output_path, 'wb') as f:
+                    while True:
+                        chunk = resp.read(8192)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+            return  # Success!
+            
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                # Wait before retry (exponential backoff)
+                wait_time = (attempt + 1) * 10  # 10s, 20s, 30s
+                time.sleep(wait_time)
+            continue
     
-    with urllib.request.urlopen(req, timeout=LTX_REQUEST_TIMEOUT) as resp:
-        with open(output_path, 'wb') as f:
-            while True:
-                chunk = resp.read(8192)
-                if not chunk:
-                    break
-                f.write(chunk)
+    # All retries failed
+    raise last_error or Exception("Failed to generate video clip after all retries")
 
 def image_to_data_uri(image_bytes, content_type="image/jpeg"):
     """Convert image bytes to data URI for LTX API."""
