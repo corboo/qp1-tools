@@ -547,18 +547,45 @@ def main():
             st.audio(uploaded_file)
     
     with input_col2:
-        st.subheader("📷 Reference Image (Optional)")
-        uploaded_image = st.file_uploader(
-            "Upload Reference Image",
+        st.subheader("📷 Reference Images (Optional)")
+        uploaded_images = st.file_uploader(
+            "Upload Reference Images",
             type=["jpg", "jpeg", "png", "webp"],
-            help="Videos will be styled/animated based on this image"
+            accept_multiple_files=True,
+            help="Upload one or more images. Videos will be styled/animated based on these images."
         )
         
-        image_uri = None
-        if uploaded_image:
-            st.image(uploaded_image, width=250)
-            content_type = f"image/{uploaded_image.type.split('/')[-1]}" if '/' in str(uploaded_image.type) else "image/jpeg"
-            image_uri = image_to_data_uri(uploaded_image.getvalue(), content_type)
+        image_uris = []
+        image_mode = "cycle"  # Default
+        
+        if uploaded_images and len(uploaded_images) > 0:
+            # Show image grid
+            num_images = len(uploaded_images)
+            cols_per_row = min(3, num_images)
+            img_cols = st.columns(cols_per_row)
+            
+            for idx, img in enumerate(uploaded_images):
+                with img_cols[idx % cols_per_row]:
+                    st.image(img, width=120, caption=f"#{idx + 1}")
+                    content_type = f"image/{img.type.split('/')[-1]}" if '/' in str(img.type) else "image/jpeg"
+                    image_uris.append(image_to_data_uri(img.getvalue(), content_type))
+            
+            # Image assignment mode (only show if multiple images)
+            if num_images > 1:
+                image_mode = st.radio(
+                    "Image Assignment",
+                    options=["cycle", "random", "first_only"],
+                    format_func=lambda x: {
+                        "cycle": "🔄 Cycle through images",
+                        "random": "🎲 Random per scene",
+                        "first_only": "1️⃣ Use first image only"
+                    }.get(x, x),
+                    horizontal=True,
+                    help="How to assign reference images to scenes"
+                )
+        
+        # For backwards compatibility, keep single image_uri for simple case
+        image_uri = image_uris[0] if len(image_uris) == 1 else None
     
     st.markdown("---")
     
@@ -619,13 +646,13 @@ For the conclusion -> Wide shot of sunset over city, hopeful atmosphere""",
     # Store the format choice for the prompt
     shot_input_format = shot_format
     
-    # Image Animation Direction (if image uploaded)
+    # Image Animation Direction (if images uploaded)
     image_direction = ""
-    if uploaded_image:
+    if uploaded_images and len(uploaded_images) > 0:
         image_direction = st.text_area(
             "🎬 Image Animation Direction",
             placeholder="e.g., 'Slow gentle zoom in, soft lighting shifts'\n'Camera slowly pans right, particles floating'\n'Subtle breathing motion, dreamy atmosphere'",
-            help="How should your reference image be animated? This applies to all clips using the image."
+            help="How should your reference images be animated? This applies to all clips using images."
         )
     
     st.markdown("---")
@@ -737,6 +764,8 @@ For the conclusion -> Wide shot of sunset over city, hopeful atmosphere""",
                     clip_paths = []
                     num_clips = len(prompts)
                     
+                    import random as _random
+                    
                     for i, prompt_data in enumerate(prompts):
                         clip_progress = 20 + (60 * (i / num_clips))
                         progress_bar.progress(int(clip_progress))
@@ -744,9 +773,21 @@ For the conclusion -> Wide shot of sunset over city, hopeful atmosphere""",
                         
                         clip_path = tmp_path / f"clip_{i:03d}.mp4"
                         
+                        # Determine which image to use for this clip
+                        current_image_uri = None
+                        if image_uris:
+                            if image_mode == "cycle":
+                                current_image_uri = image_uris[i % len(image_uris)]
+                            elif image_mode == "random":
+                                current_image_uri = _random.choice(image_uris)
+                            elif image_mode == "first_only":
+                                current_image_uri = image_uris[0]
+                            else:
+                                current_image_uri = image_uris[0] if image_uris else None
+                        
                         # Combine scene prompt with image direction if provided
                         full_prompt = prompt_data["prompt"]
-                        if image_uri and image_direction:
+                        if current_image_uri and image_direction:
                             full_prompt = f"{image_direction}. {full_prompt}"
                         
                         generate_video_clip(
@@ -755,7 +796,7 @@ For the conclusion -> Wide shot of sunset over city, hopeful atmosphere""",
                             clip_path,
                             keys['ltx'],
                             settings,
-                            image_uri=image_uri
+                            image_uri=current_image_uri
                         )
                         clip_paths.append(clip_path)
                     
