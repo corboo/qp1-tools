@@ -124,9 +124,64 @@ def get_audio_duration(audio_path):
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     return float(result.stdout.strip())
 
+def compress_audio_for_whisper(audio_path, max_size_mb=24):
+    """Compress audio file if it exceeds the size limit for Whisper API."""
+    file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
+    
+    if file_size_mb <= max_size_mb:
+        return audio_path  # No compression needed
+    
+    # Create compressed version
+    compressed_path = Path(audio_path).parent / f"compressed_{Path(audio_path).stem}.mp3"
+    
+    # Calculate target bitrate based on file duration and max size
+    # Get duration first
+    duration_cmd = [
+        "ffprobe", "-v", "quiet",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        str(audio_path)
+    ]
+    try:
+        result = subprocess.run(duration_cmd, capture_output=True, text=True, check=True)
+        duration = float(result.stdout.strip())
+    except:
+        duration = 1200  # Assume 20 min if we can't detect
+    
+    # Target ~20MB to leave headroom (in bits)
+    target_size_bits = 20 * 1024 * 1024 * 8
+    target_bitrate = int(target_size_bits / duration / 1000)  # kbps
+    target_bitrate = max(32, min(128, target_bitrate))  # Clamp between 32-128 kbps
+    
+    compress_cmd = [
+        "ffmpeg", "-y", "-i", str(audio_path),
+        "-b:a", f"{target_bitrate}k",
+        "-ac", "1",  # Mono
+        "-ar", "16000",  # 16kHz sample rate (fine for speech)
+        str(compressed_path)
+    ]
+    
+    try:
+        subprocess.run(compress_cmd, check=True, capture_output=True)
+        return compressed_path
+    except subprocess.CalledProcessError:
+        # If compression fails, return original and hope for the best
+        return audio_path
+
+
 def transcribe_audio(audio_path, api_key, progress_callback=None):
     """Transcribe audio using OpenAI Whisper API with timestamps."""
     if progress_callback:
+        progress_callback("Checking audio file size...")
+    
+    # Auto-compress if file is too large
+    original_path = audio_path
+    audio_path = compress_audio_for_whisper(audio_path)
+    
+    if audio_path != original_path:
+        if progress_callback:
+            progress_callback("Audio compressed for upload. Transcribing...")
+    elif progress_callback:
         progress_callback("Transcribing audio...")
     
     boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
