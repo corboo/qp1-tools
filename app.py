@@ -26,6 +26,24 @@ st.set_page_config(
     layout="wide"
 )
 
+# IPAI Analytics Tracking
+import streamlit.components.v1 as _components
+_components.html("""
+    <script>
+        if (!window.ipaiTracked) {
+            window.ipaiTracked = true;
+            var s = document.createElement('script');
+            s.src = 'https://ipai-analytics.vercel.app/track.js';
+            s.defer = true;
+            var m = document.createElement('meta');
+            m.name = 'ipai-app';
+            m.content = 'forge-streamlit';
+            document.head.appendChild(m);
+            document.head.appendChild(s);
+        }
+    </script>
+""", height=0)
+
 # LTX Video settings
 LTX_API_BASE = "https://api.ltx.video/v1"
 LTX_MODELS = {

@@ -22,6 +22,24 @@ st.set_page_config(
     layout="wide"
 )
 
+# IPAI Analytics Tracking
+import streamlit.components.v1 as _components
+_components.html("""
+    <script>
+        if (!window.ipaiTracked) {
+            window.ipaiTracked = true;
+            var s = document.createElement('script');
+            s.src = 'https://ipai-analytics.vercel.app/track.js';
+            s.defer = true;
+            var m = document.createElement('meta');
+            m.name = 'ipai-app';
+            m.content = 'spreaker-dashboard-streamlit';
+            document.head.appendChild(m);
+            document.head.appendChild(s);
+        }
+    </script>
+""", height=0)
+
 # Google Sheet URL (public export)
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1sNGZ03EeEtqqR4qgNmCpXgc4XebtUtjqCkctiax-uoA/export?format=csv"
 
