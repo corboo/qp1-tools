@@ -430,6 +430,71 @@ def image_to_data_uri(image_bytes, content_type="image/jpeg"):
     b64 = base64.b64encode(image_bytes).decode('utf-8')
     return f"data:{content_type};base64,{b64}"
 
+def generate_video_from_audio(audio_path, prompt, output_path, api_key, settings, max_retries=3):
+    """Generate video directly from audio using LTX audio-to-video API."""
+    model = LTX_MODELS.get(settings['model'], "ltx-2-fast")
+    resolution = LTX_RESOLUTIONS.get(settings['resolution'], "1920x1080")
+    fps = settings.get('fps', 25)
+    
+    # Read and encode audio file
+    with open(audio_path, "rb") as f:
+        audio_data = f.read()
+    
+    # Convert to base64 data URI
+    audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+    # Detect audio type from extension
+    ext = Path(audio_path).suffix.lower()
+    mime_types = {
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.m4a': 'audio/mp4',
+        '.ogg': 'audio/ogg',
+        '.flac': 'audio/flac'
+    }
+    mime_type = mime_types.get(ext, 'audio/mpeg')
+    audio_uri = f"data:{mime_type};base64,{audio_b64}"
+    
+    url = f"{LTX_API_BASE}/audio-to-video"
+    data = {
+        "audio_uri": audio_uri,
+        "prompt": prompt,
+        "model": model,
+        "resolution": resolution,
+        "fps": fps
+    }
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(url, method="POST")
+            for k, v in headers.items():
+                req.add_header(k, v)
+            req.data = json.dumps(data).encode()
+            
+            with urllib.request.urlopen(req, timeout=LTX_REQUEST_TIMEOUT * 2) as resp:
+                with open(output_path, 'wb') as f:
+                    while True:
+                        chunk = resp.read(8192)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+            return  # Success!
+            
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 15  # Longer waits for audio-to-video
+                time.sleep(wait_time)
+            continue
+    
+    raise last_error or Exception("Failed to generate video from audio after all retries")
+
+
 def concatenate_videos(video_paths, output_path):
     """Concatenate videos using ffmpeg."""
     concat_file = output_path.parent / "concat_list.txt"
@@ -606,15 +671,41 @@ def main():
         
         st.divider()
         
-        st.markdown("### ℹ️ About FORGE")
-        st.markdown("""
-        1. 📝 Transcribes audio (Whisper)
-        2. 🎬 Generates scene prompts (GPT-4)
-        3. 🎥 Creates video clips (LTX)
-        4. 🔗 Assembles final video
+        st.divider()
         
-        **⏱️ ~1-2 min per 10s of video**
-        """)
+        # Generation Mode
+        st.subheader("🎬 Generation Mode")
+        generation_mode = st.radio(
+            "Choose Mode",
+            options=["transcribe", "direct_audio"],
+            format_func=lambda x: {
+                "transcribe": "📝 Transcribe + Generate",
+                "direct_audio": "🎵 Direct Audio-to-Video"
+            }.get(x, x),
+            help="Transcribe mode analyzes your audio and generates matching visuals. Direct mode sends audio straight to LTX for sync'd video."
+        )
+        
+        if generation_mode == "direct_audio":
+            st.info("⚡ **Direct Mode:** LTX generates video synced to your audio's rhythm and mood. Simpler, faster, but less control over specific scenes.")
+        
+        st.markdown("### ℹ️ About FORGE")
+        if generation_mode == "transcribe":
+            st.markdown("""
+            1. 📝 Transcribes audio (Whisper)
+            2. 🎬 Generates scene prompts (GPT-4)
+            3. 🎥 Creates video clips (LTX)
+            4. 🔗 Assembles final video
+            
+            **⏱️ ~1-2 min per 10s of video**
+            """)
+        else:
+            st.markdown("""
+            1. 🎵 Upload audio file
+            2. 🎨 Add style/prompt guidance
+            3. 🎥 LTX generates synced video
+            
+            **⏱️ ~2-3 min total**
+            """)
     
     # ========================================================================
     # Main Content Area
@@ -791,31 +882,45 @@ For the conclusion -> Wide shot of sunset over city, hopeful atmosphere""",
             'camera_motion': camera_motion
         }
         
-        # Two buttons: AI's take vs User's take
-        btn_col1, btn_col2 = st.columns(2)
-        
-        with btn_col1:
-            generate_auto = st.button(
-                "🤖 Generate (AI's Take)",
+        # Buttons based on generation mode
+        if generation_mode == "direct_audio":
+            # Direct audio-to-video mode - single button
+            generate_direct = st.button(
+                "🎵 Generate Video from Audio",
                 type="primary",
                 use_container_width=True,
-                help="Let FORGE decide the visuals based on audio content"
+                help="Send audio directly to LTX to generate synced video"
             )
-        
-        with btn_col2:
-            generate_custom = st.button(
-                "🎯 Generate (My Prompts)",
-                type="secondary",
-                use_container_width=True,
-                disabled=not custom_shots.strip(),
-                help="Use your custom timestamped prompts"
-            )
-        
-        should_generate = generate_auto or generate_custom
-        use_custom = generate_custom and custom_shots.strip()
+            should_generate = generate_direct
+            use_custom = False
+            use_direct_audio = True
+        else:
+            # Transcribe mode - two buttons
+            btn_col1, btn_col2 = st.columns(2)
+            
+            with btn_col1:
+                generate_auto = st.button(
+                    "🤖 Generate (AI's Take)",
+                    type="primary",
+                    use_container_width=True,
+                    help="Let FORGE decide the visuals based on audio content"
+                )
+            
+            with btn_col2:
+                generate_custom = st.button(
+                    "🎯 Generate (My Prompts)",
+                    type="secondary",
+                    use_container_width=True,
+                    disabled=not custom_shots.strip(),
+                    help="Use your custom timestamped prompts"
+                )
+            
+            should_generate = generate_auto or generate_custom
+            use_custom = generate_custom and custom_shots.strip()
+            use_direct_audio = False
         
         if should_generate:
-            if not style:
+            if not style and not use_direct_audio:
                 st.error("Please select or enter a visual style")
                 return
             
@@ -827,115 +932,167 @@ For the conclusion -> Wide shot of sunset over city, hopeful atmosphere""",
                 status_text = st.empty()
                 
                 try:
-                    # Step 1: Transcribe
-                    status_text.text("📝 Step 1/4: Transcribing audio...")
-                    progress_bar.progress(10)
-                    
-                    transcript_data = transcribe_audio(audio_path, keys['openai'])
-                    transcript_text = transcript_data.get("text", "") if isinstance(transcript_data, dict) else transcript_data
-                    
-                    with st.expander("📄 Transcript"):
-                        st.text(transcript_text)
-                    
-                    # Step 2: Generate prompts
-                    status_text.text("🎬 Step 2/4: Generating scene descriptions...")
-                    progress_bar.progress(20)
-                    
-                    prompts = generate_scene_prompts(
-                        transcript_data,
-                        duration,
-                        style,
-                        settings,
-                        keys['openai'],
-                        custom_shots=custom_shots if use_custom else None,
-                        shot_format=shot_input_format if use_custom else None
-                    )
-                    
-                    with st.expander(f"🎬 Scene Prompts ({len(prompts)} scenes)"):
-                        for i, p in enumerate(prompts):
-                            ts = p.get('timestamp', f"Scene {i+1}")
-                            st.markdown(f"**{ts}** ({p['duration']}s)")
-                            st.caption(p['prompt'])
-                    
-                    # Step 3: Generate video clips
-                    status_text.text("🎥 Step 3/4: Generating video clips...")
-                    
-                    clip_paths = []
-                    num_clips = len(prompts)
-                    
-                    import random as _random
-                    
-                    for i, prompt_data in enumerate(prompts):
-                        clip_progress = 20 + (60 * (i / num_clips))
-                        progress_bar.progress(int(clip_progress))
-                        status_text.text(f"🎥 Step 3/4: Generating clip {i+1}/{num_clips}...")
+                    # Check if using direct audio-to-video mode
+                    if use_direct_audio:
+                        # Direct Audio-to-Video Mode
+                        status_text.text("🎵 Step 1/2: Preparing audio for LTX...")
+                        progress_bar.progress(10)
                         
-                        clip_path = tmp_path / f"clip_{i:03d}.mp4"
-                        
-                        # Determine which image to use for this clip
-                        current_image_uri = None
-                        if image_uris:
-                            if image_mode == "cycle":
-                                current_image_uri = image_uris[i % len(image_uris)]
-                            elif image_mode == "random":
-                                current_image_uri = _random.choice(image_uris)
-                            elif image_mode == "first_only":
-                                current_image_uri = image_uris[0]
-                            else:
-                                current_image_uri = image_uris[0] if image_uris else None
-                        
-                        # Combine scene prompt with style notes and/or image direction
-                        full_prompt = prompt_data["prompt"]
-                        
-                        # Apply style notes (always, if provided)
+                        # Build the prompt from style and notes
+                        direct_prompt = style if style else "cinematic visuals"
                         if style_notes and style_notes.strip():
-                            full_prompt = f"{style_notes.strip()}. {full_prompt}"
+                            direct_prompt = f"{style_notes.strip()}. {direct_prompt}"
+                        if custom_shots and custom_shots.strip():
+                            direct_prompt = f"{direct_prompt}. Visual guidance: {custom_shots.strip()}"
                         
-                        # Apply image animation direction (only if using images)
-                        if current_image_uri and image_direction:
-                            full_prompt = f"{image_direction}. {full_prompt}"
+                        with st.expander("🎬 Generation Prompt"):
+                            st.text(direct_prompt)
                         
-                        generate_video_clip(
-                            full_prompt,
-                            prompt_data["duration"],
-                            clip_path,
+                        status_text.text("🎥 Step 2/2: Generating video from audio (this may take a few minutes)...")
+                        progress_bar.progress(30)
+                        
+                        output_path = tmp_path / "final_video.mp4"
+                        generate_video_from_audio(
+                            audio_path,
+                            direct_prompt,
+                            output_path,
                             keys['ltx'],
-                            settings,
-                            image_uri=current_image_uri
+                            settings
                         )
-                        clip_paths.append(clip_path)
+                        
+                        progress_bar.progress(100)
+                        status_text.text("✅ Complete!")
+                        
+                        # Read final video for download
+                        with open(output_path, "rb") as f:
+                            video_bytes = f.read()
+                        
+                        st.success("🎉 Video forged successfully!")
+                        
+                        # Video preview
+                        st.video(video_bytes)
+                        
+                        # Download button
+                        output_filename = f"{Path(uploaded_file.name).stem}_forged.mp4"
+                        st.download_button(
+                            label="⬇️ Download Video",
+                            data=video_bytes,
+                            file_name=output_filename,
+                            mime="video/mp4",
+                            use_container_width=True
+                        )
                     
-                    # Step 4: Concatenate and merge
-                    status_text.text("🔗 Step 4/4: Assembling final video...")
-                    progress_bar.progress(85)
+                    else:
+                        # Transcribe + Generate Mode (original flow)
+                        # Step 1: Transcribe
+                        status_text.text("📝 Step 1/4: Transcribing audio...")
+                        progress_bar.progress(10)
                     
-                    concat_path = tmp_path / "concatenated.mp4"
-                    concatenate_videos(clip_paths, concat_path)
-                    
-                    output_path = tmp_path / "final_video.mp4"
-                    merge_audio(concat_path, audio_path, output_path)
-                    
-                    progress_bar.progress(100)
-                    status_text.text("✅ Complete!")
-                    
-                    # Read final video for download
-                    with open(output_path, "rb") as f:
-                        video_bytes = f.read()
-                    
-                    st.success("🎉 Video forged successfully!")
-                    
-                    # Video preview
-                    st.video(video_bytes)
-                    
-                    # Download button
-                    output_filename = f"{Path(uploaded_file.name).stem}_forged.mp4"
-                    st.download_button(
-                        label="⬇️ Download Video",
-                        data=video_bytes,
-                        file_name=output_filename,
-                        mime="video/mp4",
-                        use_container_width=True
-                    )
+                        transcript_data = transcribe_audio(audio_path, keys['openai'])
+                        transcript_text = transcript_data.get("text", "") if isinstance(transcript_data, dict) else transcript_data
+                        
+                        with st.expander("📄 Transcript"):
+                            st.text(transcript_text)
+                        
+                        # Step 2: Generate prompts
+                        status_text.text("🎬 Step 2/4: Generating scene descriptions...")
+                        progress_bar.progress(20)
+                        
+                        prompts = generate_scene_prompts(
+                            transcript_data,
+                            duration,
+                            style,
+                            settings,
+                            keys['openai'],
+                            custom_shots=custom_shots if use_custom else None,
+                            shot_format=shot_input_format if use_custom else None
+                        )
+                        
+                        with st.expander(f"🎬 Scene Prompts ({len(prompts)} scenes)"):
+                            for i, p in enumerate(prompts):
+                                ts = p.get('timestamp', f"Scene {i+1}")
+                                st.markdown(f"**{ts}** ({p['duration']}s)")
+                                st.caption(p['prompt'])
+                        
+                        # Step 3: Generate video clips
+                        status_text.text("🎥 Step 3/4: Generating video clips...")
+                        
+                        clip_paths = []
+                        num_clips = len(prompts)
+                        
+                        import random as _random
+                        
+                        for i, prompt_data in enumerate(prompts):
+                            clip_progress = 20 + (60 * (i / num_clips))
+                            progress_bar.progress(int(clip_progress))
+                            status_text.text(f"🎥 Step 3/4: Generating clip {i+1}/{num_clips}...")
+                            
+                            clip_path = tmp_path / f"clip_{i:03d}.mp4"
+                            
+                            # Determine which image to use for this clip
+                            current_image_uri = None
+                            if image_uris:
+                                if image_mode == "cycle":
+                                    current_image_uri = image_uris[i % len(image_uris)]
+                                elif image_mode == "random":
+                                    current_image_uri = _random.choice(image_uris)
+                                elif image_mode == "first_only":
+                                    current_image_uri = image_uris[0]
+                                else:
+                                    current_image_uri = image_uris[0] if image_uris else None
+                            
+                            # Combine scene prompt with style notes and/or image direction
+                            full_prompt = prompt_data["prompt"]
+                            
+                            # Apply style notes (always, if provided)
+                            if style_notes and style_notes.strip():
+                                full_prompt = f"{style_notes.strip()}. {full_prompt}"
+                            
+                            # Apply image animation direction (only if using images)
+                            if current_image_uri and image_direction:
+                                full_prompt = f"{image_direction}. {full_prompt}"
+                            
+                            generate_video_clip(
+                                full_prompt,
+                                prompt_data["duration"],
+                                clip_path,
+                                keys['ltx'],
+                                settings,
+                                image_uri=current_image_uri
+                            )
+                            clip_paths.append(clip_path)
+                        
+                        # Step 4: Concatenate and merge
+                        status_text.text("🔗 Step 4/4: Assembling final video...")
+                        progress_bar.progress(85)
+                        
+                        concat_path = tmp_path / "concatenated.mp4"
+                        concatenate_videos(clip_paths, concat_path)
+                        
+                        output_path = tmp_path / "final_video.mp4"
+                        merge_audio(concat_path, audio_path, output_path)
+                        
+                        progress_bar.progress(100)
+                        status_text.text("✅ Complete!")
+                        
+                        # Read final video for download
+                        with open(output_path, "rb") as f:
+                            video_bytes = f.read()
+                        
+                        st.success("🎉 Video forged successfully!")
+                        
+                        # Video preview
+                        st.video(video_bytes)
+                        
+                        # Download button
+                        output_filename = f"{Path(uploaded_file.name).stem}_forged.mp4"
+                        st.download_button(
+                            label="⬇️ Download Video",
+                            data=video_bytes,
+                            file_name=output_filename,
+                            mime="video/mp4",
+                            use_container_width=True
+                        )
                     
                 except Exception as e:
                     st.error(f"❌ Error: {str(e)}")
