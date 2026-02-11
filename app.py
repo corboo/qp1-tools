@@ -431,10 +431,17 @@ def image_to_data_uri(image_bytes, content_type="image/jpeg"):
     return f"data:{content_type};base64,{b64}"
 
 def generate_video_from_audio(audio_path, prompt, output_path, api_key, settings, max_retries=3):
-    """Generate video directly from audio using LTX audio-to-video API."""
-    model = LTX_MODELS.get(settings['model'], "ltx-2-fast")
-    resolution = LTX_RESOLUTIONS.get(settings['resolution'], "1920x1080")
-    fps = settings.get('fps', 25)
+    """Generate video directly from audio using LTX audio-to-video API.
+    
+    Note: LTX audio-to-video has specific constraints:
+    - Audio duration: 2-20 seconds only
+    - Model: ltx-2-pro only
+    - Resolution: 1920x1080 only
+    - Output FPS: always 25
+    """
+    # LTX audio-to-video ONLY supports ltx-2-pro and 1920x1080
+    model = "ltx-2-pro"
+    resolution = "1920x1080"
     
     # Read and encode audio file
     with open(audio_path, "rb") as f:
@@ -459,8 +466,7 @@ def generate_video_from_audio(audio_path, prompt, output_path, api_key, settings
         "audio_uri": audio_uri,
         "prompt": prompt,
         "model": model,
-        "resolution": resolution,
-        "fps": fps
+        "resolution": resolution
     }
     
     headers = {
@@ -884,13 +890,23 @@ For the conclusion -> Wide shot of sunset over city, hopeful atmosphere""",
         
         # Buttons based on generation mode
         if generation_mode == "direct_audio":
-            # Direct audio-to-video mode - single button
-            generate_direct = st.button(
-                "🎵 Generate Video from Audio",
-                type="primary",
-                use_container_width=True,
-                help="Send audio directly to LTX to generate synced video"
-            )
+            # Direct audio-to-video mode - check duration constraints
+            if duration < 2:
+                st.warning("⚠️ **Audio too short!** Direct mode requires audio between 2-20 seconds. Your audio is {:.1f}s.".format(duration))
+                st.info("💡 Use **Transcribe + Generate** mode for very short clips.")
+                generate_direct = False
+            elif duration > 20:
+                st.warning("⚠️ **Audio too long for Direct Mode!** LTX audio-to-video only supports 2-20 second clips. Your audio is {:.1f}s ({:.1f} min).".format(duration, duration/60))
+                st.info("💡 Switch to **Transcribe + Generate** mode for longer audio — it will split into multiple clips automatically.")
+                generate_direct = False
+            else:
+                st.success(f"✅ Audio duration ({duration:.1f}s) is perfect for Direct Mode!")
+                generate_direct = st.button(
+                    "🎵 Generate Video from Audio",
+                    type="primary",
+                    use_container_width=True,
+                    help="Send audio directly to LTX to generate synced video (2-20 sec audio only)"
+                )
             should_generate = generate_direct
             use_custom = False
             use_direct_audio = True
