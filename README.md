@@ -114,6 +114,46 @@ A Streamlit web app that transforms audio files into AI-generated videos.
 - Check LTX API key is valid
 - Verify you have API credits remaining
 
+## API Mode (for Agents)
+
+FORGE also provides a REST API for programmatic access:
+
+### Start the API Server
+```bash
+pip install fastapi uvicorn python-multipart
+uvicorn api:app --host 0.0.0.0 --port 8000
+```
+
+### API Endpoints
+
+**POST /generate** - Start a video generation job
+```bash
+curl -X POST "http://localhost:8000/generate" \
+  -F "audio_url=https://example.com/audio.mp3" \
+  -F "style=Cinematic" \
+  -F "model=ltx-2-fast" \
+  -F "resolution=1920x1080"
+```
+
+**GET /status/{job_id}** - Check job status
+```bash
+curl "http://localhost:8000/status/abc123"
+```
+
+**GET /download/{job_id}** - Download completed video
+```bash
+curl "http://localhost:8000/download/abc123" -o video.mp4
+```
+
+### Environment Variables
+Set API keys via environment:
+```bash
+export OPENAI_API_KEY="sk-..."
+export LTX_API_KEY="ltxv_..."
+```
+
+Or place them in `~/.secrets/openai.json` and `~/.secrets/ltx.json`
+
 ## License
 
 MIT
